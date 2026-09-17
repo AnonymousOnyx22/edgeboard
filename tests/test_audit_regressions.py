@@ -6,7 +6,7 @@ from src.data.espn_client import EspnClient
 from src.data.models import EloSystem, START_ELO
 from src.db import database as db
 from src.picker.backtest import record_summary
-from src.picker.engine import NflPicker, add_manual_pick
+from src.picker.engine import NflPicker
 
 
 @pytest.fixture()
@@ -128,51 +128,3 @@ def test_record_roi_uses_units_staked(audit_db):
 class _EloStub:
     def games(self, team):
         return 10
-
-
-def _seed_game(audit_db):
-    with db.connect(audit_db) as conn:
-        conn.execute("INSERT INTO teams (id,sport_id,league_key,name,abbrev) VALUES (1,1,'A','Away','AWY')")
-        conn.execute("INSERT INTO teams (id,sport_id,league_key,name,abbrev) VALUES (2,1,'H','Home','HOM')")
-        conn.execute("""INSERT INTO games
-            (id,sport_id,external_id,away_team,home_team,start_utc,status)
-            VALUES (1,1,'G',1,2,'2026-09-20T17:00:00Z','scheduled')""")
-        conn.commit()
-
-
-def test_persist_writes_picks_and_legs_with_lastrowid(audit_db):
-    _seed_game(audit_db)
-    picker = NflPicker(db_path=audit_db)
-    suggestions = [{
-        "game_id": 1, "market": "h2h", "team": "HOM", "line": None, "odds": -120,
-        "model_prob": 0.6, "implied_prob": 0.52, "edge": 0.08,
-        "confidence": {"score": 6}, "units": 1.0, "reason": "model edge",
-    }]
-    ids = picker._persist(suggestions)
-    assert ids == [1]
-    row = db.query(audit_db, "SELECT id, status, source, edge FROM picks")[0]
-    assert dict(row)["id"] == 1 and row["source"] == "model" and row["status"] == "suggested"
-    legs = db.query(audit_db, "SELECT * FROM pick_legs")
-    assert len(legs) == 1 and legs[0]["team"] == "HOM"
-
-
-def test_persist_skips_duplicates(audit_db):
-    _seed_game(audit_db)
-    picker = NflPicker(db_path=audit_db)
-    s = {"game_id": 1, "market": "h2h", "team": "HOM", "line": None, "odds": -120,
-         "model_prob": 0.6, "implied_prob": 0.52, "edge": 0.08,
-         "confidence": {"score": 6}, "units": 1.0, "reason": ""}
-    assert picker._persist([s]) == [1]
-    assert picker._persist([s]) == []
-    assert len(db.query(audit_db, "SELECT id FROM picks")) == 1
-
-
-def test_add_manual_pick_returns_lastrowid(audit_db):
-    _seed_game(audit_db)
-    pick_id = add_manual_pick(1, "spread", "AWY", -3.5, -110,
-                              units=2.0, reason="read the matchup", db_path=audit_db)
-    assert pick_id == 1
-    pick = db.query(audit_db, "SELECT source, status, units_final FROM picks")[0]
-    assert pick["source"] == "manual" and pick["status"] == "suggested"
-    leg = db.query(audit_db, "SELECT market, team, line, odds_american FROM pick_legs")[0]
-    assert dict(leg) == {"market": "spread", "team": "AWY", "line": -3.5, "odds_american": -110}

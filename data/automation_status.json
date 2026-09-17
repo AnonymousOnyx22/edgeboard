@@ -1,0 +1,29 @@
+{
+  "started_utc": "2026-09-17T23:16:39.500543+00:00",
+  "sports": {
+    "nfl": {
+      "games": 16,
+      "odds_source": "odds_api",
+      "odds_games": 17,
+      "picks_added": 0,
+      "parlay_snapshots": 1
+    },
+    "mlb": {
+      "games": 88,
+      "odds_source": "odds_api",
+      "odds_games": 16,
+      "picks_added": 0,
+      "parlay_snapshots": 0
+    },
+    "nhl": {
+      "games": 36,
+      "odds_source": "odds_api",
+      "odds_games": 4,
+      "picks_added": 0,
+      "parlay_snapshots": 0
+    }
+  },
+  "graded": 0,
+  "error": null,
+  "finished_utc": "2026-09-17T23:17:39.650057+00:00"
+}

@@ -23,6 +23,11 @@ from ..data.espn_stats import EspnStats
 
 # nflverse and ESPN disagree on exactly two abbreviations.
 NFLVERSE_TO_ESPN = {"LA": "LAR", "WAS": "WSH"}
+
+# How many prior meetings any head-to-head view considers. The summary line and
+# the per-bet backing panel must use the same window, or the same question gets
+# two different answers on one card.
+MEETING_WINDOW = 12
 ESPN_TO_NFLVERSE = {v: k for k, v in NFLVERSE_TO_ESPN.items()}
 
 # NFL stat tables now live in the sport registry; these shims keep the
@@ -159,8 +164,8 @@ class TeamH2H:
 
 
 def team_series(team_a: str, team_b: str, history: pd.DataFrame | None = None,
-                seasons_back: int = 6, limit: int = 8,
-                sport: str = "nfl") -> TeamH2H:
+                 seasons_back: int = 6, limit: int = MEETING_WINDOW,
+                 sport: str = "nfl", as_of: dt.date | None = None) -> TeamH2H:
     """Completed meetings between two teams, newest first.
 
     `team_a`/`team_b` accept either abbreviation style. `history` defaults to
@@ -169,8 +174,8 @@ def team_series(team_a: str, team_b: str, history: pd.DataFrame | None = None,
     others (scores only).
     """
     if history is None:
-        from ..data import espn_schedule
-        frame = espn_schedule.load_or_build_history(sport)
+        from ..data import history_store
+        frame = history_store.load_history(sport)
     else:
         frame = history
     result = TeamH2H(team_a=to_espn(team_a), team_b=to_espn(team_b))
@@ -178,8 +183,12 @@ def team_series(team_a: str, team_b: str, history: pd.DataFrame | None = None,
         return result
 
     a, b = _history_abbrev(team_a, sport), _history_abbrev(team_b, sport)
-    cutoff = dt.date.today().year - seasons_back
+    reference = as_of or dt.date.today()
+    cutoff = reference.year - seasons_back
     df = frame.dropna(subset=["home_score", "away_score"]).copy()
+    if "gameday" in df.columns:
+        game_dates = pd.to_datetime(df["gameday"], errors="coerce").dt.date
+        df = df[game_dates < reference]
     if "season" in df.columns:
         df = df[df["season"] >= cutoff]
     pairing = (((df["home_team"] == a) & (df["away_team"] == b)) |

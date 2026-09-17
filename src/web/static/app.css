@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Edgeboard visual system — monochrome
+   Edgeboard visual system  monochrome
    --------------------------------------------------------------------------
    There is no brand colour. Depth comes from gradients, light comes from glow,
    and hierarchy comes from weight and contrast alone. Working in one hue is
@@ -15,7 +15,7 @@
    ========================================================================== */
 
 :root {
-  /* Value ladder. Small, even steps — big jumps look cheap in monochrome. */
+  /* Value ladder. Small, even steps  big jumps look cheap in monochrome. */
   --black: #000000;
   --bg: #08080a;
   --surface: #0f0f11;
@@ -31,7 +31,7 @@
   --muted: #78787e;
   --faint: #55555c;
 
-  /* Light. Glow is white at low alpha — never a colour. */
+  /* Light. Glow is white at low alpha  never a colour. */
   --glow-strong: rgba(255, 255, 255, 0.16);
   --glow: rgba(255, 255, 255, 0.08);
   --glow-faint: rgba(255, 255, 255, 0.04);
@@ -738,6 +738,88 @@ html:not(.js) .progress b { transform: scaleX(1); }
 
 .chart-fill { fill: url(#chartFill); }
 .chart-label { color: var(--muted); font: 11.5px ui-monospace, SFMono-Regular, Consolas, monospace; margin-top: 10px; display: flex; justify-content: space-between; }
+
+/* ==========================================================================
+   Historical backing
+   The receipts behind a pick: how this exact number fared in prior meetings.
+   Collapsed by default except on the first pick, because the claim matters
+   more than the list, and the list is what proves it.
+   ========================================================================== */
+
+.backing { margin-top: 12px; }
+
+.backing summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 5px 0;
+  transition: color 160ms ease;
+}
+.backing summary::-webkit-details-marker { display: none; }
+
+/* A disclosure caret that turns with the panel. */
+.backing summary::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 220ms var(--ease-out);
+}
+.backing[open] summary::after { transform: rotate(225deg) translateY(-1px); }
+
+@media (hover: hover) and (pointer: fine) {
+  .backing summary:hover { color: var(--ink); }
+}
+
+.backing-score {
+  color: var(--ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.backing-tag {
+  font-size: 10.5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--faint);
+}
+/* A deep sample earns the brighter treatment; an anecdote does not. */
+.backing-tag.solid { color: var(--ink); border-color: #3a3a42; }
+.backing-tag.anecdote { opacity: 0.75; }
+
+.backing-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.backing-list li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-soft);
+}
+.backing-list li:last-child { border-bottom: 0; }
+
+.backing-date { font: 11.5px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--faint); }
+.backing-detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.backing-mark { width: 12px; text-align: center; }
+.backing-list li.hit { color: var(--ink); }
+.backing-list li.hit .backing-mark { color: var(--white); }
+.backing-list li.miss .backing-mark { color: var(--faint); }
 
 /* ==========================================================================
    Club crests and player headshots

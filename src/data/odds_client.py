@@ -55,7 +55,10 @@ class OddsClient:
     @staticmethod
     def credits() -> dict | None:
         if CREDITS_FILE.exists():
-            return json.loads(CREDITS_FILE.read_text())
+            try:
+                return json.loads(CREDITS_FILE.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                return None
         return None
 
     # --------------------------------------------------------------- sports
@@ -66,17 +69,26 @@ class OddsClient:
         """Map of Odds-API sport keys (e.g. americanfootball_nfl). Cached for 1 day."""
         path = self._sports_cache_path()
         if not force and path.exists():
-            age = dt.datetime.now() - dt.datetime.fromtimestamp(path.stat().st_mtime)
-            if age < dt.timedelta(days=1):
-                sport_meta, _ = json.loads(path.read_text())
-                return sport_meta
-        resp = self.session.get(self.base, params={"apiKey": self.api_key}, timeout=30)
+            try:
+                age = dt.datetime.now() - dt.datetime.fromtimestamp(path.stat().st_mtime)
+                if age < dt.timedelta(days=1):
+                    sport_meta, _ = json.loads(path.read_text(encoding="utf-8"))
+                    return sport_meta
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                pass
+        try:
+            resp = self.session.get(self.base, params={"apiKey": self.api_key}, timeout=30)
+        except requests.RequestException as exc:
+            raise OddsAPIError(f"sports list request failed: {exc}") from exc
         self._save_credit_headers(resp)
         if resp.status_code == 401:
             raise OddsAPIError("Invalid ODDS_API_KEY. Get a free key at https://the-odds-api.com")
         if resp.status_code != 200:
             raise OddsAPIError(f"sports_list failed HTTP {resp.status_code}: {resp.text[:200]}")
-        payload = json.loads(resp.text)
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise OddsAPIError("sports list returned invalid JSON") from exc
         # Raw response saved for inspection - never guess field names.
         (DATA_DIR / "samples").mkdir(exist_ok=True)
         (DATA_DIR / "samples" / "sports_list_0_raw.json").write_text(json.dumps(payload, indent=2))
@@ -126,25 +138,34 @@ class OddsClient:
         """Fetch h2h+spreads+totals odds for one sport. Cache-aware, region us only."""
         cache = self._cache_path(sport_key)
         if not force and cache.exists():
-            age = dt.datetime.now() - dt.datetime.fromtimestamp(cache.stat().st_mtime)
-            if age < dt.timedelta(days=1):
-                _, payload = json.loads(cache.read_text()) if self._cache_has_meta(cache) else (None, json.loads(cache.read_text()))
-                return payload
+            try:
+                age = dt.datetime.now() - dt.datetime.fromtimestamp(cache.stat().st_mtime)
+                if age < dt.timedelta(days=1):
+                    cached = json.loads(cache.read_text(encoding="utf-8"))
+                    _, payload = cached if self._cache_has_meta(cache) else (None, cached)
+                    return payload
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                pass
 
         url = f"{self.base}/{sport_key}/odds/"
-        resp = self.session.get(url, params={
-            "apiKey": self.api_key,
-            "regions": "us",
-            "markets": "h2h,spreads,totals",
-            # The API defaults to decimal. Everything downstream - the odds
-            # table, the edge maths, the display - is American, and truncating
-            # a decimal 1.91 to an integer silently turns it into "+1".
-            "oddsFormat": "american",
-        }, timeout=30)
+        try:
+            resp = self.session.get(url, params={
+                "apiKey": self.api_key,
+                "regions": "us",
+                "markets": "h2h,spreads,totals",
+                # The API defaults to decimal. Everything downstream - the odds
+                # table, the edge maths, the display - is American.
+                "oddsFormat": "american",
+            }, timeout=30)
+        except requests.RequestException as exc:
+            raise OddsAPIError(f"odds request for {sport_key} failed: {exc}") from exc
         self._save_credit_headers(resp)
         if resp.status_code != 200:
             raise OddsAPIError(f"odds for {sport_key} failed HTTP {resp.status_code}: {resp.text[:200]}")
-        payload = json.loads(resp.text)
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise OddsAPIError(f"odds for {sport_key} returned invalid JSON") from exc
         samples_dir.mkdir(exist_ok=True)
         (samples_dir / f"odds_{sport_key}_0_raw.json").write_text(json.dumps(payload, indent=2))
         cache.write_text(json.dumps([dt.datetime.now().isoformat(), payload]))

@@ -62,9 +62,18 @@ def grade_pick(pick_id: int, db_path=db.DEFAULT_DB) -> dict:
     pick = pick[0]
     legs = db.query(db_path,
                     "SELECT * FROM pick_legs WHERE pick_id=? ORDER BY ord", (pick_id,))
+    if not legs:
+        raise ValueError(f"pick {pick_id} has no legs")
     games = {}
     for leg in legs:
-        g = db.query(db_path, "SELECT * FROM games WHERE id=?", (leg["game_id"],))[0]
+        game_rows = db.query(db_path, "SELECT * FROM games WHERE id=?", (leg["game_id"],))
+        if not game_rows:
+            raise ValueError(f"pick {pick_id} references a missing game")
+        g = game_rows[0]
+        if g["status"] != "final":
+            raise ValueError(f"game {g['id']} is not final")
+        if g["away_score"] is None or g["home_score"] is None:
+            raise ValueError(f"game {g['id']} is final but has no complete score")
         games[int(leg["game_id"])] = g
 
     if pick["nature"] == "straight":
@@ -73,7 +82,7 @@ def grade_pick(pick_id: int, db_path=db.DEFAULT_DB) -> dict:
         away = db.query(db_path, "SELECT abbrev FROM teams WHERE id=?", (g["away_team"],))[0]["abbrev"]
         home = db.query(db_path, "SELECT abbrev FROM teams WHERE id=?", (g["home_team"],))[0]["abbrev"]
         result = grade_straight(leg["market"], leg["team"], leg["line"],
-                                g["away_score"] or 0, g["home_score"] or 0, away, home)
+                                g["away_score"], g["home_score"], away, home)
         units = pick["units_final"] or pick["units_model"] or 1.0
         won = units_won(result, units, payout_multiplier(leg["odds_american"]))
 
@@ -84,7 +93,7 @@ def grade_pick(pick_id: int, db_path=db.DEFAULT_DB) -> dict:
             away = db.query(db_path, "SELECT abbrev FROM teams WHERE id=?", (g["away_team"],))[0]["abbrev"]
             home = db.query(db_path, "SELECT abbrev FROM teams WHERE id=?", (g["home_team"],))[0]["abbrev"]
             leg_result = grade_straight(leg["market"], leg["team"], leg["line"],
-                                        g["away_score"] or 0, g["home_score"] or 0, away, home)
+                                        g["away_score"], g["home_score"], away, home)
             leg_results.append((leg, leg_result))
         units = pick["units_final"] or pick["units_model"] or 1.0
         if any(r == "L" for _, r in leg_results):
@@ -105,9 +114,18 @@ def grade_pick(pick_id: int, db_path=db.DEFAULT_DB) -> dict:
             won = units_won("W", units, dec - 1.0)
 
     now = dt.datetime.now(dt.timezone.utc).isoformat()
-    db.execute(db_path, "INSERT OR REPLACE INTO results (pick_id, result, units_won, graded_utc) VALUES (?,?,?,?)",
-               (pick_id, result, won, now))
-    db.execute(db_path, "UPDATE picks SET status='graded' WHERE id=?", (pick_id,))
+    conn = db.connect(db_path)
+    try:
+        conn.execute("""INSERT OR REPLACE INTO results
+                     (pick_id,result,units_won,graded_utc) VALUES (?,?,?,?)""",
+                     (pick_id, result, won, now))
+        conn.execute("UPDATE picks SET status='graded' WHERE id=?", (pick_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     return {"result": result, "units_won": won}
 
 
@@ -116,7 +134,6 @@ def ungraded_picks(db_path=db.DEFAULT_DB, game_date: str | None = None) -> list:
     sql = """
         SELECT p.id FROM picks p
         WHERE p.status != 'graded'
-          AND p.status NOT IN ('suggested', 'rejected')
     """
     params: tuple = ()
     if game_date:
@@ -133,8 +150,12 @@ def ungraded_picks(db_path=db.DEFAULT_DB, game_date: str | None = None) -> list:
         legs = db.query(db_path, "SELECT game_id FROM pick_legs WHERE pick_id=?", (row["id"],))
         if not legs:
             continue
-        states = [db.query(db_path, "SELECT status FROM games WHERE id=?", (l["game_id"],))[0]["status"] for l in legs]
-        if all(s == "final" for s in states):
+        games = [db.query(db_path,
+                          "SELECT status,away_score,home_score FROM games WHERE id=?",
+                          (leg["game_id"],)) for leg in legs]
+        if all(rows and rows[0]["status"] == "final"
+               and rows[0]["away_score"] is not None
+               and rows[0]["home_score"] is not None for rows in games):
             out.append(row["id"])
     return out
 

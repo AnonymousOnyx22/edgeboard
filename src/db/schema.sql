@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS picks (
     sport_id        INTEGER NOT NULL REFERENCES sports(id),
     nature          TEXT NOT NULL DEFAULT 'straight',   -- straight / parlay
     source          TEXT NOT NULL DEFAULT 'model',      -- model / manual / edited
-    status          TEXT NOT NULL DEFAULT 'suggested',  -- suggested / approved / edited / rejected / content_generated / scheduled / graded
+    status          TEXT NOT NULL DEFAULT 'approved',   -- approved / scheduled / graded
     edge            REAL,
     confidence_model REAL,
     confidence_final REAL,
@@ -156,3 +156,44 @@ INSERT OR IGNORE INTO sports (code, name, enabled) VALUES
     ('mlb', 'MLB', 0),
     ('nhl', 'NHL', 0),
     ('nba', 'NBA', 0);
+
+-- Completed games with their closing lines, kept locally so the picker can ask
+-- "has this exact bet actually cashed before?" without refetching a season of
+-- schedule data every time. Populated by `python main.py backfill`.
+--
+-- Team abbreviations are normalised to ESPN's spelling on the way in (nflverse
+-- says LA/WAS where ESPN says LAR/WSH), so a pairing query never has to know
+-- which source a row came from.
+CREATE TABLE IF NOT EXISTS game_history (
+    id          INTEGER PRIMARY KEY,
+    sport       TEXT NOT NULL,                 -- nfl / mlb / nhl
+    game_key    TEXT NOT NULL,                 -- source id, used to dedupe
+    season      INTEGER,
+    week        INTEGER,
+    game_date   TEXT NOT NULL,                 -- YYYY-MM-DD
+    home_team   TEXT NOT NULL,
+    away_team   TEXT NOT NULL,
+    home_score  REAL NOT NULL,
+    away_score  REAL NOT NULL,
+    spread_line REAL,                          -- home-relative, favourite positive
+    total_line  REAL,
+    source      TEXT,                          -- nflverse / espn
+    UNIQUE(sport, game_key)
+);
+
+-- A watched parlay is repriced whenever its sport is refreshed.  Keeping the
+-- snapshots separate from the current odds table lets the UI draw a genuine
+-- movement line without allowing stale book prices into today's model.
+CREATE TABLE IF NOT EXISTS pick_snapshots (
+    id              INTEGER PRIMARY KEY,
+    pick_id         INTEGER NOT NULL REFERENCES picks(id) ON DELETE CASCADE,
+    captured_utc    TEXT NOT NULL,
+    decimal_odds    REAL NOT NULL,
+    implied_prob    REAL NOT NULL,
+    model_prob      REAL NOT NULL,
+    expected_value  REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pick_snapshots_pick
+    ON pick_snapshots(pick_id, captured_utc);
+CREATE INDEX IF NOT EXISTS idx_history_pair ON game_history(sport, home_team, away_team);
+CREATE INDEX IF NOT EXISTS idx_history_date ON game_history(sport, game_date);

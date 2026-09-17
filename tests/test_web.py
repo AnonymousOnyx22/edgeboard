@@ -61,3 +61,18 @@ def test_jargon_is_not_user_facing(client):
     """'Slate' is insider language; the UI says games."""
     for path in ("/", "/games", "/model-picks"):
         assert b"slate" not in client.get(path).data.lower()
+
+
+def test_review_workflow_is_not_user_facing(client):
+    body = client.get("/games").data.lower() + client.get("/").data.lower()
+    assert b"awaiting review" not in body
+    assert b"track</button>" not in body
+    assert b"pass</button>" not in body
+
+
+def test_posts_require_csrf(client):
+    assert client.post("/grade").status_code == 400
+    client.get("/performance")
+    with client.session_transaction() as state:
+        token = state["_csrf_token"]
+    assert client.post("/grade", data={"_csrf_token": token}).status_code == 302

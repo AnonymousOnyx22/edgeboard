@@ -1,9 +1,9 @@
-Episode {{ ep.number }} — Recap: {{ ctx.date }}
+Episode {{ ep.number }}  Recap: {{ ctx.date }}
 
 Straight up, no spin. Here's how I did:
 
 {% for r in ctx.results %}
-{{ '✅' if r.result=='W' else ('❌' if r.result=='L' else '➖') }} {{ r.label }} — {{ r.result }}
+{{ '✅' if r.result=='W' else ('❌' if r.result=='L' else '➖') }} {{ r.label }}  {{ r.result }}
 {% endfor %}
 
 {% if ctx.pld %}{{ ctx.pld }} pushes, so they cancel out.{% endif %}

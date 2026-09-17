@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from ..data import models, sports as sport_registry
 from ..db import database as db
 from . import confidence as conf
+from . import evidence
 from . import h2h as h2h_mod
 from . import props as props_mod
 from .edge import american_to_prob, cover_probability, edge, over_probability, remove_vig
@@ -29,6 +30,12 @@ from .edge import american_to_prob, cover_probability, edge, over_probability, r
 # How far Elo can be pulled toward the head-to-head record, per prior meeting.
 H2H_WEIGHT_PER_MEETING = 0.06
 H2H_WEIGHT_CAP = 0.30
+
+# The closing line is a sharp prior. The model keeps most of its own view but
+# is pulled toward the price, which is what stops a twenty-point disagreement
+# being staked as the best bet on the board. Matches props.MARKET_TRUST.
+MARKET_TRUST = 0.35
+IMPLAUSIBLE_EDGE = 0.12
 
 
 @dataclass
@@ -47,6 +54,9 @@ class LineCandidate:
     units: float
     bookmaker: str = ""
     h2h_note: str = ""
+    backing: object | None = None   # evidence.Backing, attached by day_board
+    raw_model_prob: float | None = None   # before the market prior was applied
+    warnings: list = field(default_factory=list)
 
     @property
     def headline(self) -> str:
@@ -159,14 +169,21 @@ def day_board(day: dt.date | None = None, sport: str = "nfl",
     cfg = db.get_config()
     threshold = min_edge if min_edge is not None else cfg["edge"]["target"]
     if history is None:
-        from ..data import espn_schedule
-        history = espn_schedule.load_or_build_history(sport)
-    elo = elo or models.train_elo(history, until_date=day, sport=sport)
-    rates = scoring_rates(history, sport)
+        # The local store is the deep history the user controls; it is what the
+        # Elo trainer, the scoring rates and the head-to-head record all read.
+        from ..data import history_store
+        history = history_store.load_history(sport, db_path)
+    # Every input to a historical board must be information that existed before
+    # that date.  Filtering only Elo would still leak future scoring rates and
+    # head-to-head results into old picks.
+    prior_history = history_before(history, day)
+    elo = elo or models.train_elo(prior_history, until_date=day, sport=sport)
+    rates = scoring_rates(prior_history, sport)
 
     cards: list[GameCard] = []
     for row in games_on(day, sport, db_path):
-        series = h2h_mod.team_series(row["home"], row["away"], history, sport=sport)
+        series = h2h_mod.team_series(row["home"], row["away"], prior_history,
+                                     sport=sport, as_of=day)
         prediction = blended_prediction(row["home"], row["away"], elo, series)
         card = GameCard(
             game_id=row["id"], home=row["home"], away=row["away"],
@@ -181,8 +198,62 @@ def day_board(day: dt.date | None = None, sport: str = "nfl",
         if card.bettable or include_started:
             card.candidates = line_candidates(card, prediction, elo, threshold,
                                               db_path, rates)
+            # Replay each offered number against the stored prior meetings.
+            evidence.attach(card, sport, db_path=db_path, as_of=day)
         cards.append(card)
     return cards
+
+
+def history_before(history, day: dt.date):
+    """Return completed history strictly before ``day`` without mutating it."""
+    if history is None or getattr(history, "empty", True):
+        return history
+    if "gameday" not in history.columns:
+        return history.copy()
+    import pandas as pd
+    dates = pd.to_datetime(history["gameday"], errors="coerce").dt.date
+    return history.loc[dates < day].copy()
+
+
+def upcoming_board(sport: str = "nfl", days: int = 7, start: dt.date | None = None,
+                   db_path=db.DEFAULT_DB, min_edge: float | None = None,
+                   include_started: bool = False,
+                   limit: int | None = None) -> list[GameCard]:
+    """Every game from `start` through the next `days`, modelled and priced.
+
+    The expensive setup - loading history, training Elo, computing scoring
+    rates - is done once and reused across the whole range, rather than per
+    day, which is what `day_board` would do on its own.
+
+    Games already under way are dropped by default, so this is a forward-
+    looking card: the next games worth betting, not a diary.
+    """
+    start = start or dt.date.today()
+    from ..data import history_store
+    history = history_store.load_history(sport, db_path)
+    elo = models.train_elo(history, until_date=start, sport=sport)
+
+    cards: list[GameCard] = []
+    for offset in range(max(1, days)):
+        cards += day_board(start + dt.timedelta(days=offset), sport, db_path,
+                           min_edge, history=history, elo=elo,
+                           include_started=include_started)
+
+    if not include_started:
+        cards = [c for c in cards if c.bettable]
+    cards.sort(key=lambda c: c.start_utc or "")
+    return cards[:limit] if limit else cards
+
+
+def next_games(sport: str = "nfl", count: int = 5, days: int = 14,
+               db_path=db.DEFAULT_DB, min_edge: float | None = None) -> list[GameCard]:
+    """The next `count` games for a sport, whenever they happen to be.
+
+    Useful between rounds, when a league's next fixtures are a week out and
+    "today" is empty.
+    """
+    return upcoming_board(sport, days=days, db_path=db_path,
+                          min_edge=min_edge, limit=count)
 
 
 # Older name, kept so nothing breaks mid-rename.
@@ -337,18 +408,35 @@ def line_candidates(card: GameCard, prediction: dict, elo: models.EloSystem,
                                  american_to_prob(odds))[1]
         except ValueError:
             implied = american_to_prob(odds)
-        value = edge(model_prob, implied)
+
+        # The market is a sharp prior, exactly as it is for props. An Elo and
+        # scoring-rate model that disagrees with a closing line by twenty
+        # points of probability has almost always missed something the book
+        # knows - a starter out, weather, a short week - rather than found
+        # value. Blending toward the price keeps the ranking while stopping
+        # those from being sold, and staked, as the best bets on the board.
+        raw_prob = model_prob
+        blended = (1 - MARKET_TRUST) * model_prob + MARKET_TRUST * implied
+        value = edge(blended, implied)
         if value < threshold:
             return
+
+        warnings: list[str] = []
+        if value >= IMPLAUSIBLE_EDGE:
+            warnings.append(
+                f"Model is {abs(blended - implied):.0%} away from the market. "
+                "That usually means information the model cannot see.")
+
         breakdown = conf.compute_confidence(
-            value, model_prob, quality, cfg["confidence"],
+            value, blended, quality, cfg["confidence"],
             cfg["edge"].get("max_edge_display", cfg["edge"]["target"]))
         out.append(LineCandidate(
             game_id=card.game_id, game=card.matchup, market=market, side=side,
-            line=line, odds=odds, model_prob=round(model_prob, 4),
+            line=line, odds=odds, model_prob=round(blended, 4),
             implied_prob=round(implied, 4), edge=round(value, 4),
             confidence=breakdown, units=conf.units_from_confidence(breakdown["score"], cfg),
-            bookmaker=pair["bookmaker"] or "", h2h_note=note))
+            bookmaker=pair["bookmaker"] or "", h2h_note=note,
+            raw_model_prob=round(raw_prob, 4), warnings=warnings))
 
     home_prob = prediction["home_win_prob"]
     for side, opponent, prob in ((card.home, card.away, home_prob),
@@ -521,3 +609,48 @@ def parlay_pool(cards: list[GameCard], props: list[props_mod.PropCandidate] | No
         if candidate.probability >= min_probability:
             pool.append(prop_leg(candidate))
     return pool
+
+
+def next_game_by_team(sport: str = "nfl", days: int = 14,
+                      start: dt.date | None = None,
+                      db_path=db.DEFAULT_DB) -> list[dict]:
+    """Every club in the league with its next fixture and best available pick.
+
+    A club with no scheduled game in the window is still listed, with `card`
+    left as None, so the page shows the whole league rather than only the
+    teams that happen to be playing soon.
+    """
+    cards = upcoming_board(sport, days=days, start=start, db_path=db_path)
+
+    first: dict[str, GameCard] = {}
+    for card in cards:                      # already sorted by kickoff
+        first.setdefault(card.home, card)
+        first.setdefault(card.away, card)
+
+    teams = db.query(db_path, """
+        SELECT t.abbrev, t.name FROM teams t
+        WHERE t.sport_id = (SELECT id FROM sports WHERE code=?)
+        ORDER BY t.abbrev""", (sport,))
+
+    out = []
+    for team in teams:
+        abbrev = team["abbrev"]
+        card = first.get(abbrev)
+        picks = []
+        if card is not None:
+            # Only the bets on this club, plus the game total, which belongs
+            # to both sides of the fixture.
+            picks = [c for c in card.candidates
+                     if c.side == abbrev or c.market == "total"]
+            picks.sort(key=lambda c: c.edge, reverse=True)
+        out.append({
+            "abbrev": abbrev,
+            "name": team["name"],
+            "card": card,
+            "opponent": (card.away if card and card.home == abbrev
+                         else card.home if card else None),
+            "at_home": bool(card and card.home == abbrev),
+            "picks": picks,
+            "best": picks[0] if picks else None,
+        })
+    return out

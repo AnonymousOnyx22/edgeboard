@@ -9,14 +9,14 @@ hooks:
     - "My Best Plays For Today"
   upset_alert:
     - "Upset Alert 🚨"
-    - "Everyone is on {fav} — I'm Not"
+    - "Everyone is on {fav}  I'm Not"
     - "I'm Fading the Public Today"
   biggest_edge:
     - "This Is My Biggest Edge Today 💎"
     - "The Line Looks Wrong Today"
   early_lines:
     - "Early NFL Lines I'm Watching 👀"
-    - "Week {week} Lines Opened — Here's What Jumps"
+    - "Week {week} Lines Opened  Here's What Jumps"
   recap:
     - "How Did We Do? 🎯"
     - "Yesterday's Picks All Graded"

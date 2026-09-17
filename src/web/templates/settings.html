@@ -3,6 +3,7 @@
 {% block content %}
 <div class="eyebrow">System</div><h1>Settings</h1><p class="lede">Tune what qualifies as an edge and choose which leagues appear on the desk.</p>
 <form method="post" class="section" data-loading>
+  <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
   <div class="settings-grid">
     <section class="settings-panel"><div class="eyebrow">Model thresholds</div><h2>What makes the board</h2>
       <div class="field" style="margin:18px 0"><label>Minimum edge</label><input type="number" name="edge_target" min="0.001" max="1" step="0.005" value="{{ config.edge.target }}"><p class="note">A 0.03 threshold means the model must beat the vig-free market probability by 3 percentage points.</p></div>
@@ -10,6 +11,14 @@
     </section>
     <section class="settings-panel"><div class="eyebrow">Leagues</div><h2>What shows up</h2>
       {% for code,item in registry.items() %}<label class="check-row"><span><b>{{ item.name }}</b><small style="display:block;color:#6d6a66">{{ item.odds_key }}</small></span><input type="checkbox" name="sport_{{ code }}" {{ 'checked' if config.sports.get(code,{}).enabled }}></label>{% endfor %}
+    </section>
+    <section class="settings-panel"><div class="eyebrow">Automatic selection</div><h2>What enters Model Picks</h2>
+      <label class="check-row"><span><b>Enable model picks</b><small style="display:block;color:#6d6a66">Qualifying bets go straight into the ledger.</small></span><input type="checkbox" name="auto_enabled" {{ 'checked' if config.auto_pick.enabled }}></label>
+      <div class="field" style="margin-top:14px"><label>Minimum confidence (1–10)</label><input type="number" name="auto_min_confidence" min="1" max="10" value="{{ config.auto_pick.min_confidence }}"></div>
+      <div class="field"><label>Minimum edge</label><input type="number" name="auto_min_edge" min="0" max="1" step="0.005" value="{{ config.auto_pick.min_edge }}"></div>
+      <div class="field"><label>Minimum prior meetings</label><input type="number" name="auto_min_backing_games" min="0" max="20" value="{{ config.auto_pick.min_backing_games }}"></div>
+      <div class="field"><label>Minimum historical hit rate (optional)</label><input type="number" name="auto_min_backing_rate" min="0" max="1" step="0.05" value="{{ config.auto_pick.min_backing_rate if config.auto_pick.min_backing_rate is not none else '' }}"></div>
+      <div class="field"><label>Maximum picks per day</label><input type="number" name="auto_max_per_day" min="1" max="20" value="{{ config.auto_pick.max_per_day }}"></div>
     </section>
   </div>
   <div style="margin-top:14px"><button class="button primary" type="submit">Save settings</button></div>

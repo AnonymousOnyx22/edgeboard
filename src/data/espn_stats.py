@@ -42,15 +42,55 @@ CORE_HOST = "https://sports.core.api.espn.com/v2/sports"
 FINISHED_TTL = 30 * 24 * 3600
 LIVE_TTL = 20 * 60
 
-# Stats ESPN does not report directly, built from ones it does.
-# MLB total bases: singles + 2*doubles + 3*triples + 4*HR, which reduces to
-# hits + doubles + 2*triples + 3*homeRuns.
+# Stats ESPN does not report directly, built from ones it does. Every combined
+# market the books offer needs one of these, or the model has nothing to
+# project it from.
+#
+# Each builder returns None when its inputs are missing, so a player who simply
+# did not record that category is treated as unknown rather than as a zero.
+
+
+def _sum_or_none(row, keys):
+    """Add stats together, but only if at least one was actually recorded."""
+    values = [row.get(k) for k in keys]
+    if all(v is None for v in values):
+        return None
+    return sum(v or 0 for v in values)
+
+
 DERIVED_STATS = {
+    "nfl": {
+        # Books price these as single combined numbers.
+        "rushRecYards": lambda r: _sum_or_none(r, ("rushingYards", "receivingYards")),
+        "passRushYards": lambda r: _sum_or_none(r, ("passingYards", "rushingYards")),
+        "allPurposeYards": lambda r: _sum_or_none(
+            r, ("passingYards", "rushingYards", "receivingYards")),
+        # "Anytime touchdown" is a yes/no market, so this is a count of TDs
+        # scored; a 0.5 line then reads as "scored at least one".
+        "anytimeTouchdown": lambda r: _sum_or_none(
+            r, ("rushingTouchdowns", "receivingTouchdowns")),
+    },
     "mlb": {
+        # Total bases: singles + 2*doubles + 3*triples + 4*HR, which reduces to
+        # hits + doubles + 2*triples + 3*homeRuns.
         "totalBases": lambda r: (
             None if r.get("hits") is None else
             r["hits"] + (r.get("doubles") or 0) + 2 * (r.get("triples") or 0)
             + 3 * (r.get("homeRuns") or 0)),
+        "singles": lambda r: (
+            None if r.get("hits") is None else
+            max(0, r["hits"] - (r.get("doubles") or 0) - (r.get("triples") or 0)
+                - (r.get("homeRuns") or 0))),
+        "hitsRunsRbis": lambda r: _sum_or_none(r, ("hits", "runs", "RBIs")),
+        # ESPN reports innings as 6.2 meaning "six and two thirds", so the
+        # fractional part is outs, not a decimal.
+        "outsRecorded": lambda r: (
+            None if r.get("innings") is None else
+            int(r["innings"]) * 3 + round((r["innings"] - int(r["innings"])) * 10)),
+    },
+    "nhl": {
+        "powerPlayPoints": lambda r: _sum_or_none(
+            r, ("powerPlayGoals", "powerPlayAssists")),
     },
 }
 

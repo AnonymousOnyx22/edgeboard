@@ -43,7 +43,7 @@ Fast (local DB + cached schedule frame, no live player pulls). Returns
 | `best` | `LineCandidate \| None` | Highest edge, or `None`. |
 
 > **Started games carry no candidates.** Books keep quoting a game once it is
-> under way, and a pregame model reads those live prices as enormous edges — a
+> under way, and a pregame model reads those live prices as enormous edges  a
 > 7.5-run baseball line at -10000 is a scoreline, not value. `slate_board`
 > returns started games so you can display them, with `candidates == []`.
 > Render `card.bettable is False` as "under way / final", not as "no value".
@@ -73,7 +73,7 @@ head-to-head adjustment: it makes the size of the nudge visible.
 | `odds` | American, e.g. `-110`, `+210`. |
 | `bookmaker` | Which book offered it. |
 | `model_prob`, `implied_prob`, `edge` | `edge = model_prob - implied_prob`, vig removed. |
-| `confidence` | `dict` — `score` is the 1–10 value; the rest is the breakdown. |
+| `confidence` | `dict`  `score` is the 1–10 value; the rest is the breakdown. |
 | `units` | Suggested stake, from the confidence tiers. |
 | `h2h_note` | One sentence of head-to-head evidence. Can be `""`. |
 
@@ -113,7 +113,7 @@ deep = board.deep_matchup(card, fetch_prices=True, progress=cb)
 
 Slow on first open: it pulls both rosters and every player's game log from
 ESPN, then optionally buys prop prices. Everything is cached on disk
-afterwards. `progress` is `callable(fraction: float, message: str)` — wire it
+afterwards. `progress` is `callable(fraction: float, message: str)`  wire it
 to a progress bar, because the first call on a cold cache takes a while.
 
 Returns `DeepMatchup`:
@@ -156,14 +156,14 @@ load. `fetch_prices=False` uses only what is already cached and never spends.
 | `evidence()` | `"3/4 vs MIA (avg 223.2) · 7/9 in last 9 · proj 240.8"`. |
 | `hit_vs_opponent` | `(cleared, games against this opponent)`. |
 | `hit_recent` | `(cleared, recent games)`. |
-| `projection` | `Projection` — `mean`, `sd`, `n_games`, `n_vs`, `vs_average`. |
+| `projection` | `Projection`  `mean`, `sd`, `n_games`, `n_vs`, `vs_average`. |
 | `injury_status` | `""` when healthy; otherwise e.g. `"Questionable"`. Surface it. |
 | `raw_probability` | The model's view *before* the market prior. |
 | `warnings` | `list[str]` of plain-language cautions. |
 | `trustworthy` | `False` when `warnings` is non-empty. |
 
 **The market is used as a prior.** Books price props sharply and know things
-this model cannot see — a snap share, a depth-chart change, a coach's plan. So
+this model cannot see  a snap share, a depth-chart change, a coach's plan. So
 `probability` is the model's view pulled partway toward the vig-free price, and
 `raw_probability` keeps the unadjusted number for inspection. Without this, a
 player whose role changed last month shows up as a 30% edge.
@@ -172,10 +172,10 @@ player whose role changed last month shows up as a 30% edge.
 information is the likelier explanation, a listed injury, a sample under six
 games, and no prior meeting with this opponent. **Display them next to the
 pick, not in a tooltip.** A prop with `trustworthy is False` is not
-necessarily bad — it is one the user should look at before backing.
+necessarily bad  it is one the user should look at before backing.
 
 `hit_vs_opponent[1] == 0` means these two have never met with this player
-involved. That is common and worth showing plainly — it is the difference
+involved. That is common and worth showing plainly  it is the difference
 between a head-to-head read and a form read.
 
 ### `PlayerSample`
@@ -206,7 +206,7 @@ slips = parlay_builder.optimize(pool, min_legs=2, max_legs=4,
 - never the same player-and-stat twice
 
 `rank_by="probability"` gives the most likely slip; `"value"` gives the best
-expected value. Offer both — they are genuinely different slips.
+expected value. Offer both  they are genuinely different slips.
 
 ### `Parlay`
 
@@ -224,23 +224,22 @@ expected value. Offer both — they are genuinely different slips.
 
 Combined probability multiplies the legs, which assumes independence. That
 holds across different games; inside one game it does not, so same-game slips
-are discounted and flagged. Show `notes` — they are the caveats.
+are discounted and flagged. Show `notes`  they are the caveats.
 
 ---
 
 ## 4. Saving and grading
 
-`board` never writes. To persist a pick, the write path is
-`src/picker/engine.Picker` and `src/picker/actions`:
+`board` and `Picker.suggest()` never write. Automatic selection is the only
+straight-pick write path:
 
 ```python
-actions.approve_pick(pick_id)
-actions.edit_pick(pick_id, confidence=8, units=2.0, reason="...")
-actions.reject_pick(pick_id)
-actions.build_parlay_from_picks([id1, id2])   # approved straights -> a parlay
+from src.picker import autopick
+autopick.run("nfl", days=7)
 ```
 
-Statuses: `suggested → approved / edited / rejected → graded`.
+Qualifying picks are committed as `approved`, then become `graded` after the
+game is final. Non-qualifying candidates are never stored.
 Grading is `src/picker/grader.grade_all(game_date=...)`; season numbers come
 from `src/picker/backtest.record_summary()`.
 
@@ -260,7 +259,7 @@ falls back to ESPN's embedded lines when the Odds API is unavailable, so a
 missing key degrades rather than breaks.
 
 Game-line syncing is cheap (one credit per sport per call, cached a day).
-Prop pricing is the expensive part — see Credits above.
+Prop pricing is the expensive part  see Credits above.
 
 ---
 
@@ -285,7 +284,7 @@ the three sports stay consistent.
 1. **NHL is out of season until October.** Its wiring is verified against the
    same endpoints as MLB, but a slate will be empty until then. Say "no games
    today", not "error".
-2. **First matchup open is slow** on a cold cache — dozens of ESPN requests.
+2. **First matchup open is slow** on a cold cache  dozens of ESPN requests.
    Always show progress.
 3. **`None` means unknown.** Coverage rates, H2H averages and prop prices are
    all `None`-able. Rendering `None` as `0` would be a lie.

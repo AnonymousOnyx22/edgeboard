@@ -218,7 +218,7 @@ def _slide_build(ep_type: str, ep: em.Episode, picks: list[dict],
         caption = captions.render_caption(tpl_name, {"ep": ep, "ctx": ctx, "record": record,
                                                      "brand": BRAND, "disclaimer": DISCLAIMER})
     except jinja2.TemplateNotFound:
-        caption = f"Episode {ep.number} — {ep_type}\n\n{DISCLAIMER}"
+        caption = f"Episode {ep.number}  {ep_type}\n\n{DISCLAIMER}"
     return slides, caption
 
 

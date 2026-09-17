@@ -3,44 +3,105 @@
 {% block title %}Edgeboard · Today’s games{% endblock %}
 {% block content %}
 <div class="eyebrow">Every matchup, priced and modelled</div>
-<h1>{{ sport.name }} games today</h1>
-<p class="lede">Current price, model probability and qualifying edge, by matchup.</p>
+<h1>{{ sport.name }} upcoming games</h1>
+<p class="lede">Every scheduled game still open to bet, with current price, model probability and qualifying edge. Finished and in-play games are hidden.</p>
 
 <div class="filters">
   <form method="get" class="filters" style="display:contents">
-    <div class="field"><label>Date</label><input type="date" name="date" value="{{ day.isoformat() }}"></div>
+    <div class="field"><label>From</label><input type="date" name="date" value="{{ day.isoformat() }}"></div><div class="field"><label>Window</label><select name="days">{% for n in [1,3,7,14,21] %}<option value="{{ n }}" {{ "selected" if n == days }}>Next {{ n }} day{{ "s" if n > 1 }}</option>{% endfor %}</select></div>
     <div class="field"><label>Sport</label><select name="sport">{% for item in sports %}<option value="{{ item.code }}" {{ 'selected' if item.code == sport.code }}>{{ item.name }}</option>{% endfor %}</select></div>
     <button class="button" type="submit">View games</button>
   </form>
   <form method="post" action="{{ url_for('sync') }}" data-loading style="margin-left:auto">
-    <input type="hidden" name="date" value="{{ day.isoformat() }}"><input type="hidden" name="sport" value="{{ sport.code }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}"><input type="hidden" name="date" value="{{ day.isoformat() }}"><input type="hidden" name="sport" value="{{ sport.code }}"><input type="hidden" name="days" value="{{ days }}">
     <button class="button primary" type="submit">Refresh data + model</button>
   </form>
 </div>
 
 <div class="metric-grid">
-  <div class="metric"><small>Games</small><strong>{{ cards|length }}</strong></div>
+  <div class="metric"><small>Open games</small><strong>{{ cards|length }}</strong></div>
   <div class="metric"><small>Qualified edges</small><strong>{{ cards|map(attribute='candidates')|map('length')|sum }}</strong></div>
   <div class="metric"><small>Sport</small><strong>{{ sport.name }}</strong></div>
-  <div class="metric"><small>Date</small><strong style="font-size:18px">{{ day.strftime('%b %d') }}</strong></div>
+  <div class="metric"><small>Window</small><strong style="font-size:18px">Next {{ days }}d</strong></div>
 </div>
 
 {% if cards %}<div class="games">
 {% for card in cards %}<article class="game-card">
-  <div class="game-head"><span class="sport-dot">{{ sport.name }}</span><span class="game-matchup">{{ media.matchup(card.away, card.home, sport.code) }}</span><span class="game-time">{{ card.kickoff_local() }} · {{ card.status|replace('_',' ') }}</span></div>
+  <div class="game-head"><span class="sport-dot">{{ sport.name }}</span><span class="game-matchup">{{ media.matchup(card.away, card.home, sport.code) }}</span><span class="game-time">{{ card.kickoff_local() }}</span></div>
   {% if card.candidates %}<div class="candidate-grid">
     {% for pick in card.candidates %}<div class="candidate">
       <div class="candidate-top"><span class="pick-name">{{ media.pick_badge(pick.side, sport.code) }}<span>{{ pick.headline }}</span></span><span class="price">{{ '%+d'|format(pick.odds) }}</span></div>
-      <div class="candidate-stats"><span><small>Model</small><b>{{ '%.1f%%'|format(pick.model_prob*100) }}</b></span><span><small>Edge</small><b style="color:var(--orange-2)">{{ '%+.1f%%'|format(pick.edge*100) }}</b></span><span><small>Confidence</small><b>{{ pick.confidence.score }}/10</b></span></div>
+      <div class="candidate-stats"><span><small>Model</small><b>{{ '%.1f%%'|format(pick.model_prob*100) }}</b></span><span><small>Edge</small><b>{{ '%+.1f%%'|format(pick.edge*100) }}</b></span><span><small>Confidence</small><b>{{ pick.confidence.score }}/10</b></span></div>
       <div class="progress"><b style="width:{{ pick.confidence.score*10 }}%"></b></div>
+
+      {# What this exact number has actually done in prior meetings. #}
+      {% set backing = pick.backing %}
+      {% if backing and backing.total %}
+        <details class="backing" {{ 'open' if loop.first }}>
+          <summary>
+            <span class="backing-score">{{ backing.hits }}/{{ backing.total }}</span>
+            <span class="backing-text">cashed in prior meetings</span>
+            <span class="backing-tag {{ backing.strength }}">{{ backing.strength }}</span>
+          </summary>
+          <ol class="backing-list">
+            {% for game in backing.graded %}
+              <li class="{{ 'hit' if game.hit else 'miss' }}">
+                <span class="backing-date">{{ game.date }}</span>
+                <span class="backing-detail">{{ game.detail }}</span>
+                <span class="backing-mark" aria-label="{{ 'cashed' if game.hit else 'lost' }}">{{ '✓' if game.hit else '·' }}</span>
+              </li>
+            {% endfor %}
+          </ol>
+        </details>
+      {% elif backing %}
+        <p class="note">No prior meetings on record for this matchup.</p>
+      {% endif %}
+
       {% if pick.h2h_note %}<p class="note">{{ pick.h2h_note }}</p>{% endif %}
     </div>{% endfor %}
-  </div>{% else %}<div style="padding:18px 20px;color:#716e68;font-size:12px">{{ 'Game already started — pregame model closed.' if card.started else 'No line cleared the configured edge threshold.' }}</div>{% endif %}
+  </div>{% else %}<div style="padding:18px 20px;color:#716e68;font-size:12px">{{ 'Game already started  pregame model closed.' if card.started else 'No line cleared the configured edge threshold.' }}</div>{% endif %}
 </article>{% endfor %}
-</div>{% else %}<div class="empty"><h3>No games in the local database.</h3><p>Use “Refresh data + model” to pull these games.</p></div>{% endif %}
+</div>{% else %}<div class="empty"><h3>No upcoming games in this window.</h3><p>Use “Refresh data + model” to pull the next fixtures, or widen the window.</p></div>{% endif %}
 
-{% if tracked %}<section class="section"><div class="section-head"><div><div class="eyebrow">Saved</div><h2>Your tracked picks</h2></div></div>
-<div class="table-wrap"><table class="data-table"><thead><tr><th>Pick</th><th>Matchup</th><th>Model</th><th>Edge</th><th>Status</th><th>Action</th></tr></thead><tbody>
-{% for pick in tracked %}<tr><td><b>{{ pick.team }} {{ pick.market|upper }}{% if pick.line is not none %} {{ '%+g'|format(pick.line) }}{% endif %}</b> · {{ '%+d'|format(pick.odds_american) }}</td><td>{{ pick.away }} @ {{ pick.home }}</td><td>{{ '%.1f%%'|format((pick.model_prob or 0)*100) }}</td><td>{{ '%+.1f%%'|format((pick.edge or 0)*100) }}</td><td><span class="pill {{ 'green' if pick.status in ['approved','edited'] else 'orange' }}">{{ pick.status }}</span></td><td>{% if pick.status == 'suggested' %}<div style="display:flex;gap:6px"><form method="post" action="{{ url_for('pick_action',pick_id=pick.id,action='approve') }}"><button class="button primary">Track</button></form><form method="post" action="{{ url_for('pick_action',pick_id=pick.id,action='reject') }}"><button class="button">Pass</button></form></div>{% else %}On card{% endif %}</td></tr>{% endfor %}
+
+<section class="section" id="teams">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Whole league</div>
+      <h2>Every team's next game</h2>
+      <p>All {{ teams|length }} clubs, when they next play, and the best qualifying pick on that fixture.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Team</th><th>Next game</th><th>Kickoff</th><th>Best pick</th><th>Price</th><th>Edge</th><th>Conf</th></tr></thead>
+      <tbody>
+      {% for row in teams %}
+        <tr>
+          <td><b>{{ media.crest(row.abbrev, sport.code, 'sm') }} {{ row.abbrev }}</b></td>
+          {% if row.card %}
+            <td>{{ 'vs' if row.at_home else '@' }} {{ row.opponent }}</td>
+            <td>{{ row.card.kickoff_local() }}</td>
+            {% if row.best %}
+              <td><b>{{ row.best.headline }}</b></td>
+              <td>{{ '%+d'|format(row.best.odds) }}</td>
+              <td>{{ '%+.1f%%'|format(row.best.edge * 100) }}</td>
+              <td>{{ row.best.confidence.score }}/10</td>
+            {% else %}
+              <td colspan="4" class="note" style="margin:0">No line cleared the threshold</td>
+            {% endif %}
+          {% else %}
+            <td colspan="6" class="note" style="margin:0">No scheduled game in this window</td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if tracked %}<section class="section"><div class="section-head"><div><div class="eyebrow">Selected automatically</div><h2>Open model picks</h2><p>Only picks that cleared the configured model rules appear here.</p></div></div>
+<div class="table-wrap"><table class="data-table"><thead><tr><th>Pick</th><th>Matchup</th><th>Model</th><th>Edge</th><th>Status</th></tr></thead><tbody>
+{% for pick in tracked %}<tr><td><b>{{ pick.team }} {{ pick.market|upper }}{% if pick.line is not none %} {{ '%+g'|format(pick.line) }}{% endif %}</b> · {{ '%+d'|format(pick.odds_american) }}</td><td>{{ pick.away }} @ {{ pick.home }}</td><td>{{ '%.1f%%'|format((pick.model_prob or 0)*100) }}</td><td>{{ '%+.1f%%'|format((pick.edge or 0)*100) }}</td><td><span class="pill green">{{ pick.status }}</span></td></tr>{% endfor %}
 </tbody></table></div></section>{% endif %}
 {% endblock %}

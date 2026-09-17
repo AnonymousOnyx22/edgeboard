@@ -20,6 +20,25 @@ confidence:
     extreme_weather: 1.0
     no_head_to_head: 1.5                # these two have not met in the sample
 
+# When the model is confident enough in a number it writes the pick to the
+# ledger by itself, so the record builds without anyone choosing which bets to
+# remember after the fact. Only upcoming games are ever committed.
+auto_pick:
+  enabled: true
+  min_confidence: 6         # of 10
+  min_edge: 0.04            # model probability over the vig-free price
+  min_backing_games: 0      # require this many prior meetings on record
+  min_backing_rate: ~       # and optionally that the bet cashed this often
+  max_per_day: 5            # per sport
+  status: approved          # approved = counts toward the tracked record
+
+# Runs with the local dashboard. Prices remain cache-aware, so the hourly
+# check does not waste Odds API credits when a fresh response already exists.
+automation:
+  enabled: true
+  refresh_minutes: 60
+  days: 7
+
 units:
   tiers:                  # overridable per-pick in the dashboard
     1: 5.5                # confidence <= 5.5  -> 1u
@@ -42,7 +61,7 @@ total_model:
 
 head_to_head:
   seasons_back: 6         # how far back to look for prior meetings
-  max_meetings: 8         # most recent N meetings used
+  max_meetings: 12        # most recent N meetings used, everywhere
   player_seasons: 3       # seasons of player gamelogs to pull (incl. current)
 
 props:

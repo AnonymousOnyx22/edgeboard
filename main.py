@@ -5,6 +5,9 @@
     python main.py board   [--sport nfl] [--date YYYY-MM-DD]
     python main.py matchup <game_id> [--fetch-prices]
     python main.py parlay  [--sport nfl] [--legs 3] [--rank probability|value]
+    python main.py backfill [--sport nfl] [--seasons 8]
+    python main.py autopick [--sport nfl] [--days 3] [--dry-run]
+    python main.py audit   [--fix]
     python main.py grade   [--date YYYY-MM-DD]
     python main.py credits
     python main.py backtest [--season YYYY]
@@ -36,11 +39,13 @@ def cmd_dashboard(_args) -> None:
     import threading
     import webbrowser
     from src.web.app import create_app
+    from src.picker.scheduler import start as start_scheduler
     from waitress import serve
 
     url = "http://127.0.0.1:8502"
     threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     print(f"Opening Edgeboard locally at {url}")
+    start_scheduler()
     serve(create_app(), host="127.0.0.1", port=8502, threads=6)
 
 
@@ -141,6 +146,94 @@ def cmd_parlay(args) -> None:
         print()
 
 
+def cmd_backfill(args) -> None:
+    """Load past seasons of completed games into the local history store."""
+    from src.data import history_store
+
+    def progress(fraction, message):
+        print(f"  {fraction:4.0%}  {message}")
+
+    for code in _sports(args):
+        config = sport_registry.get(code)
+        print(f"\n{config.emoji} {config.name}: loading {args.seasons} season(s)")
+        result = history_store.backfill(code, seasons=args.seasons, progress=progress)
+        print(f"  stored {result['written']} games "
+              f"({result['seasons'][0]}-{result['seasons'][-1]})")
+
+    print("\nHistory now in the database:")
+    for row in history_store.coverage():
+        lines = (f", {row['with_lines']} with closing lines"
+                 if row["with_lines"] else ", no closing lines")
+        print(f"  {row['sport'].upper():4s} {row['games']:5d} games  "
+              f"{row['first_season']}-{row['last_season']}{lines}")
+
+
+def cmd_autopick(args) -> None:
+    """Commit every upcoming bet the model is confident enough in."""
+    from src.picker import autopick
+    rules = autopick.settings()
+    print(f"Rules: confidence >= {rules['min_confidence']}/10, "
+          f"edge >= {rules['min_edge']:.1%}, max {rules['max_per_day']} per sport")
+    if args.dry_run:
+        print("Dry run - nothing will be written.\n")
+
+    total = 0
+    for code in _sports(args):
+        config = sport_registry.get(code)
+        result = autopick.run(code, days=args.days, dry_run=args.dry_run)
+        total += result["added"]
+        print(f"\n{config.emoji} {config.name}: "
+              f"{result['added']} added, {result.get('already_tracked', 0)} already tracked, "
+              f"{result['considered']} considered")
+        for pick in result["picks"]:
+            print(f"   {pick['game']:12s} {pick['kickoff']:16s} {pick['headline']:16s} "
+                  f"{pick['odds']:+5d}  conf {pick['confidence']}/10  {pick['units']}u")
+            print(f"      {pick['reason']}")
+
+    if not args.dry_run and total:
+        print(f"\n{total} pick(s) added to the ledger. "
+              "Run `python main.py grade` once those games are final.")
+
+
+def cmd_audit(args) -> None:
+    """Check the tracked record for picks that were never really pregame."""
+    from src.picker import audit
+    found = audit.report()
+
+    live_rows = found["live_odds_rows"]
+    print(f"Stored prices captured after kickoff: {live_rows}")
+
+    invalid = found["invalid_picks"]
+    if invalid:
+        print(f"\nInvalid picks ({len(invalid)}) - priced off a game already under way:")
+        for item in invalid:
+            print(f"  #{item['id']:<3} {item['sport']:3s} {item['game']:12s} "
+                  f"{item['pick']:16s} {item['odds']:+6d} edge {(item['edge'] or 0):+.1%}")
+            for reason in item["reasons"]:
+                print(f"        - {reason}")
+    else:
+        print("\nNo picks were committed after kickoff.")
+
+    suspect = found["suspect_edges"]
+    if suspect:
+        print(f"\nPregame picks with an implausible recorded edge ({len(suspect)}):")
+        for item in suspect:
+            print(f"  #{item['id']:<3} {item['game']:12s} {item['pick']:16s} "
+                  f"{item['odds']:+6d} edge {(item['edge'] or 0):+.1%}")
+        print("  These were real bets scored by a since-corrected model.")
+        print("  They are kept: deleting losers a model talked itself into")
+        print("  is how a tracked record starts lying.")
+
+    if not args.fix:
+        if invalid or live_rows:
+            print("\nRe-run with --fix to remove the invalid picks and live prices.")
+        return
+
+    purged = audit.purge_live_odds()
+    removed = audit.delete_picks([item["id"] for item in invalid])
+    print(f"\nRemoved {removed} invalid pick(s) and {purged} live price row(s).")
+
+
 def cmd_grade(args) -> None:
     from src.picker.backtest import record_summary
     from src.picker.grader import grade_all
@@ -226,6 +319,20 @@ def main() -> None:
     p.add_argument("--limit", type=int, default=5)
     p.add_argument("--min-leg-prob", type=float, default=0.55)
 
+    p = sub.add_parser("backfill", help="load past seasons into the local history store")
+    p.add_argument("--sport", choices=codes)
+    p.add_argument("--seasons", type=int, default=8, choices=range(1, 31),
+                   help="how many seasons back to load (default: 8)")
+
+    p = sub.add_parser("autopick", help="commit confident upcoming picks automatically")
+    p.add_argument("--sport", choices=codes)
+    p.add_argument("--days", type=int, default=3, help="how far ahead to look")
+    p.add_argument("--dry-run", action="store_true", help="show, do not write")
+
+    p = sub.add_parser("audit", help="check the record for non-pregame picks")
+    p.add_argument("--fix", action="store_true",
+                   help="delete the invalid picks and live prices it finds")
+
     p = sub.add_parser("grade", help="grade picks whose games are final")
     p.add_argument("--date", help="only grade picks on this game date")
 
@@ -239,6 +346,8 @@ def main() -> None:
     {
         "dashboard": cmd_dashboard, "sync": cmd_sync, "board": cmd_board,
         "matchup": cmd_matchup, "parlay": cmd_parlay, "grade": cmd_grade,
+        "backfill": cmd_backfill, "autopick": cmd_autopick,
+        "audit": cmd_audit,
         "credits": cmd_credits, "backtest": cmd_backtest,
     }[args.command](args)
 

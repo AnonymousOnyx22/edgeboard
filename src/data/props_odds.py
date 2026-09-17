@@ -49,8 +49,11 @@ class CreditGuard(OddsAPIError):
 
 class PropsOddsClient:
     def __init__(self, sport: str = "nfl", api_key: str | None = None,
-                 credit_floor: int = 50):
+                 credit_floor: int = 50, depth: str = "core"):
         self.sport = sport_registry.get(sport)
+        # "core" is a handful of markets; "all" is everything this sport can
+        # model. Each market costs a credit per game, so the dial is explicit.
+        self.depth = depth
         self.api_key = api_key if api_key is not None else os.getenv("ODDS_API_KEY", "")
         self.credit_floor = credit_floor
         self.session = requests.Session()
@@ -63,7 +66,7 @@ class PropsOddsClient:
 
     @property
     def default_markets(self) -> list[str]:
-        return list(self.sport.default_markets)
+        return self.sport.markets_for(self.depth)
 
     # -------------------------------------------------------------- credits
     @staticmethod

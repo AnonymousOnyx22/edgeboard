@@ -35,16 +35,41 @@ class Picker:
         day = day or dt.date.today()
         return self.espn.upsert_games(self.sport.code, day, db_path=self.db_path)
 
+    def sync_upcoming(self, days: int = 7, start: dt.date | None = None,
+                      progress=None) -> dict:
+        """Sync schedules for a range of days, then prices once.
+
+        The Odds API returns every upcoming event for a sport in a single
+        request, so prices cost the same whether one day or ten is being
+        looked at. Schedules are per-day, so those are fetched in a loop.
+        """
+        start = start or dt.date.today()
+        games = 0
+        for offset in range(max(1, days)):
+            day = start + dt.timedelta(days=offset)
+            if progress:
+                progress(offset / max(1, days), f"Schedule for {day.isoformat()}")
+            games += self.sync_games(day)
+        if progress:
+            progress(0.9, "Fetching prices")
+        odds = self.sync_odds(force=True, day=start)
+        return {"sport": self.sport.code, "days": days, "games": games,
+                "odds_source": odds["source"], "odds_games": odds["games"]}
+
     def sync_odds(self, force: bool = False, day: dt.date | None = None) -> dict:
         """Sync this sport's current prices into the odds table.
         Returns {'source': 'odds_api'|'espn_backup'|'none', 'games': n}."""
         try:
             payloads = self.odds.fetch_odds(self.sport.odds_key, force=force)
             n = self._store_odds_api(payloads)
+            from .actions import snapshot_open_parlays
+            snapshot_open_parlays(self.sport.code, self.db_path)
             return {"source": "odds_api", "games": n}
         except odds_client.OddsAPIError as e:
             self.eta_groups = {"h2h": 0, "spreads": 0, "totals": 1}
             n = self._store_espn_backup(day or dt.date.today())
+            from .actions import snapshot_open_parlays
+            snapshot_open_parlays(self.sport.code, self.db_path)
             return {"source": "espn_backup", "games": n, "note": str(e)}
 
     def _game_key(self, home_name: str, away_name: str,
@@ -68,19 +93,30 @@ class Picker:
 
     def _store_odds_api(self, payload: list[dict]) -> int:
         n = 0
-        for event in payload:
-            home, away = event.get("home_team", ""), event.get("away_team", "")
-            game_id = self._game_key(home, away, event.get("commence_time"))
-            if game_id is None:
-                continue
-            db.execute(self.db_path, "DELETE FROM odds WHERE game_id=?", (game_id,))
-            for bk in event.get("bookmakers", []):
-                for mkt in bk.get("markets", []):
-                    mkey = mkt.get("key", "")
-                    if mkey not in ODDS_MARKETS:
-                        continue
-                    self._write_market(game_id, mkey, mkt.get("outcomes", []), bk.get("key", ""))
-            n += 1
+        conn = db.connect(self.db_path)
+        try:
+            for event in payload:
+                home, away = event.get("home_team", ""), event.get("away_team", "")
+                game_id = self._game_key(home, away, event.get("commence_time"))
+                if game_id is None:
+                    continue
+                # Replace a game's quote set atomically. A malformed provider
+                # payload can no longer leave half a market in the database.
+                conn.execute("DELETE FROM odds WHERE game_id=?", (game_id,))
+                for bk in event.get("bookmakers", []):
+                    for mkt in bk.get("markets", []):
+                        mkey = mkt.get("key", "")
+                        if mkey not in ODDS_MARKETS:
+                            continue
+                        self._write_market(game_id, mkey, mkt.get("outcomes", []),
+                                           bk.get("key", ""), conn=conn)
+                n += 1
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
         return n
 
     def _store_espn_backup(self, day: dt.date) -> int:
@@ -122,21 +158,23 @@ class Picker:
         return n
 
     def _write_market(self, game_id: int, mkey: str, outcomes: list[dict],
-                      bookmaker: str, line_pick: float | None = None) -> None:
+                      bookmaker: str, line_pick: float | None = None,
+                      conn=None) -> None:
         if mkey == "h2h":
             for o in outcomes:
                 side = self._normalize_team_side(game_id, o.get("name", ""))
-                self._write_price(game_id, "h2h", side, o.get("price"), None, bookmaker)
+                self._write_price(game_id, "h2h", side, o.get("price"), None,
+                                  bookmaker, conn=conn)
         elif mkey == "spreads":
             for o in outcomes:
                 side = self._normalize_team_side(game_id, o.get("name", ""))
                 self._write_price(game_id, "spread", side, o.get("price"),
-                                  o.get("point"), bookmaker)
+                                  o.get("point"), bookmaker, conn=conn)
         elif mkey == "totals":
             for o in outcomes:
                 side = o.get("name", "")  # Over / Under
                 self._write_price(game_id, "total", side, o.get("price"),
-                                  o.get("point"), bookmaker)
+                                  o.get("point"), bookmaker, conn=conn)
 
     def _normalize_team_side(self, game_id: int, name: str) -> str:
         rows = db.query(self.db_path, """
@@ -146,26 +184,52 @@ class Picker:
             LIMIT 1""", (game_id, name, name))
         return rows[0]["abbrev"] if rows else name
 
+    def _is_pregame(self, game_id: int) -> bool:
+        """Is this game still unplayed?
+
+        Books keep quoting a game once it is under way, and The Odds API
+        happily returns those in-play numbers. Storing them would let a
+        pregame model read a live scoreline as enormous value, so they are
+        refused at the point of entry rather than filtered later.
+        """
+        rows = db.query(self.db_path,
+                        "SELECT start_utc, status FROM games WHERE id=?", (game_id,))
+        if not rows:
+            return False
+        if rows[0]["status"] in ("in_progress", "final", "postponed"):
+            return False
+        try:
+            start = dt.datetime.fromisoformat(
+                (rows[0]["start_utc"] or "").replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return True
+        return start > dt.datetime.now(dt.timezone.utc)
+
     def _write_price(self, game_id: int, market: str, side: str, price,
-                     line: float | None, bookmaker: str, source: str = "odds_api") -> None:
+                     line: float | None, bookmaker: str, source: str = "odds_api",
+                     conn=None) -> None:
         if price is None or side is None:
             return
+        if not self._is_pregame(game_id):
+            return
         now = dt.datetime.now(dt.timezone.utc).isoformat()
-        cur = db.connect(self.db_path)
-        cur.execute("""INSERT INTO odds (game_id, market, side, price, line, bookmaker, source, captured_utc)
+        owns_connection = conn is None
+        target = conn or db.connect(self.db_path)
+        target.execute("""INSERT INTO odds (game_id, market, side, price, line, bookmaker, source, captured_utc)
                        VALUES (?,?,?,?,?,?,?,?)""",
                     (game_id, market, side, int(price), line, bookmaker or "unknown", source, now))
-        cur.commit()
-        cur.close()
+        if owns_connection:
+            target.commit()
+            target.close()
 
     # ------------------------------------------------------------ model
     def _history(self) -> object:
-        from ..data import espn_schedule
-        return espn_schedule.load_or_build_history(self.sport.code)
+        from ..data import history_store
+        return history_store.load_history(self.sport.code, self.db_path)
 
-    def ensure_elo(self) -> models.EloSystem:
+    def ensure_elo(self, until_date: dt.date | None = None) -> models.EloSystem:
         history = self._history()
-        return models.train_elo(history, until_date=dt.date.today(),
+        return models.train_elo(history, until_date=until_date or dt.date.today(),
                                 sport=self.sport.code)
 
     def predict(self, home: str, away: str, elo: models.EloSystem) -> dict:
@@ -179,17 +243,20 @@ class Picker:
             "extreme_weather": False,
         }
 
-    # ----------------------------------------------------- suggestions
-    def suggest(self, day: dt.date | None = None, persist: bool = True,
+    # ----------------------------------------------------- candidates
+    def suggest(self, day: dt.date | None = None,
                 ret_threshold: float | None = None) -> list[dict]:
-        """Compute edges for all today's NFL games and emit suggested picks.
-        Returns the suggestion dicts; persists them as picks when persist=True."""
+        """Compute candidate edges without writing anything to the ledger.
+
+        Persistence is intentionally owned by ``autopick`` so a candidate can
+        never sit in a manual-review state.
+        """
         cfg = db.get_config()
         threshold = ret_threshold if ret_threshold is not None else cfg["edge"]["target"]
         day = day or dt.date.today()
         self.sync_games(day)
         self.sync_odds(day=day)
-        elo = self.ensure_elo()
+        elo = self.ensure_elo(day)
 
         games = db.query(self.db_path, """
             SELECT g.id, ht.abbrev AS home, at.abbrev AS away, g.slate, g.start_utc
@@ -197,7 +264,8 @@ class Picker:
             JOIN teams ht ON ht.id = g.home_team
             JOIN teams at ON at.id = g.away_team
             WHERE g.sport_id = (SELECT id FROM sports WHERE code=?)
-              AND g.status IN ('scheduled','in_progress')
+              AND g.status='scheduled'
+              AND datetime(g.start_utc) > datetime('now')
               AND COALESCE(g.game_date, date(g.start_utc))=date(?)
         """, (self.sport.code, day.isoformat()))
         picks: list[dict] = []
@@ -205,8 +273,6 @@ class Picker:
             pred = self.predict(g["home"], g["away"], elo)
             picks += self._edges_for_game(g, pred, elo, threshold)
 
-        if persist:
-            self._persist(picks, len(picks))
         return picks
 
     def _edges_for_game(self, game, pred: dict, elo: models.EloSystem,
@@ -328,41 +394,6 @@ class Picker:
         return (settings.get("base", self.sport.total_base),
                 settings.get("sd", self.sport.total_sd))
 
-    # -------------------------------------------------------- persist
-    def _persist(self, suggestions: list[dict], _count=None) -> list[int]:
-        ids = []
-        now = dt.datetime.now(dt.timezone.utc).isoformat()
-        sport_id = db.query(self.db_path, "SELECT id FROM sports WHERE code=?",
-                            (self.sport.code,))[0]["id"]
-        for s in suggestions:
-            duplicate = db.query(self.db_path, """
-                SELECT p.id FROM picks p JOIN pick_legs l ON l.pick_id=p.id
-                WHERE l.game_id=? AND l.market=? AND LOWER(l.team)=LOWER(?)
-                  AND COALESCE(l.line, -99999)=COALESCE(?, -99999)
-                  AND p.status IN ('suggested','approved','edited','content_generated','scheduled')
-                LIMIT 1""", (s["game_id"], s["market"], s["team"], s["line"]))
-            if duplicate:
-                continue
-            conn = db.connect(self.db_path)
-            cur = conn.execute("""INSERT INTO picks (sport_id, nature, source, status, edge,
-                        confidence_model, confidence_final, units_model, units_final,
-                        reason, created_utc)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                        (sport_id, "straight", "model", "suggested", s["edge"],
-                         s["confidence"]["score"], None, s["units"], None,
-                         s.get("reason", ""), now))
-            pick_id = cur.lastrowid
-            conn.execute("""INSERT INTO pick_legs (pick_id, ord, game_id, market, team, line,
-                        odds_american, model_prob, implied_prob, edge)
-                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                        (pick_id, 0, s["game_id"], s["market"], s["team"], s["line"],
-                         s["odds"], s["model_prob"], s["implied_prob"], s["edge"]))
-            conn.commit()
-            conn.close()
-            ids.append(pick_id)
-        return ids
-
-
 class NflPicker(Picker):
     """NFL-bound Picker, kept for call sites that predate multi-sport."""
 
@@ -370,36 +401,3 @@ class NflPicker(Picker):
                  eta_groups: Optional[dict] = None):
         super().__init__("nfl", db_path=db_path, odds_key=odds_key,
                          eta_groups=eta_groups)
-
-
-def add_manual_pick(game_id: int, market: str, team: str, line: float | None,
-                    odds: int, units: float = 1.0, reason: str = "",
-                    sport: str = "nfl", db_path=db.DEFAULT_DB) -> int:
-    """Manual pick from the dashboard - same grading/pick flow, source='manual'."""
-    market = market.lower().strip()
-    if market not in {"h2h", "spread", "total"}:
-        raise ValueError(f"unsupported market: {market}")
-    if not db.query(db_path, "SELECT id FROM games WHERE id=?", (game_id,)):
-        raise ValueError(f"no game {game_id}")
-    if not team.strip():
-        raise ValueError("team/side is required")
-    if market in {"spread", "total"} and line is None:
-        raise ValueError(f"{market} requires a line")
-    if int(odds) == 0:
-        raise ValueError("American odds cannot be 0")
-    if float(units) <= 0:
-        raise ValueError("units must be greater than 0")
-    now = dt.datetime.now(dt.timezone.utc).isoformat()
-    sport_id = db.query(db_path, "SELECT id FROM sports WHERE code=?", (sport,))[0]["id"]
-    conn = db.connect(db_path)
-    cur = conn.execute("""INSERT INTO picks (sport_id, nature, source, status, confidence_final,
-                units_final, reason, created_utc)
-                VALUES (?,?,?,?,?,?,?,?)""",
-                (sport_id, "straight", "manual", "suggested", None, units, reason, now))
-    pick_id = cur.lastrowid
-    conn.execute("""INSERT INTO pick_legs (pick_id, ord, game_id, market, team, line, odds_american)
-                VALUES (?,?,?,?,?,?,?)""",
-                (pick_id, 0, game_id, market, team, line, odds))
-    conn.commit()
-    conn.close()
-    return pick_id
