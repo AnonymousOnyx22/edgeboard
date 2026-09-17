@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Edgeboard · Settings{% endblock %}
 {% block content %}
-<div class="eyebrow">System</div><h1>Settings,<br><em>kept simple.</em></h1><p class="lede">Tune what qualifies as an edge and choose which leagues appear on the desk.</p>
+<div class="eyebrow">System</div><h1>Settings</h1><p class="lede">Tune what qualifies as an edge and choose which leagues appear on the desk.</p>
 <form method="post" class="section" data-loading>
   <div class="settings-grid">
-    <section class="settings-panel"><div class="eyebrow">Model thresholds</div><h2>What makes the board.</h2>
+    <section class="settings-panel"><div class="eyebrow">Model thresholds</div><h2>What makes the board</h2>
       <div class="field" style="margin:18px 0"><label>Minimum edge</label><input type="number" name="edge_target" min="0.001" max="1" step="0.005" value="{{ config.edge.target }}"><p class="note">A 0.03 threshold means the model must beat the vig-free market probability by 3 percentage points.</p></div>
       <div class="field"><label>Edge that maps to full confidence</label><input type="number" name="max_edge_display" min="0.001" max="1" step="0.01" value="{{ config.edge.max_edge_display }}"></div>
     </section>
-    <section class="settings-panel"><div class="eyebrow">Leagues</div><h2>What shows up.</h2>
+    <section class="settings-panel"><div class="eyebrow">Leagues</div><h2>What shows up</h2>
       {% for code,item in registry.items() %}<label class="check-row"><span><b>{{ item.name }}</b><small style="display:block;color:#6d6a66">{{ item.odds_key }}</small></span><input type="checkbox" name="sport_{{ code }}" {{ 'checked' if config.sports.get(code,{}).enabled }}></label>{% endfor %}
     </section>
   </div>

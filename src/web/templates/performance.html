@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Edgeboard · Performance{% endblock %}
 {% block content %}
-<div class="eyebrow">03 · Track the record</div>
-<h1>Performance,<br><em>without spin.</em></h1>
+<div class="eyebrow">Track the record</div>
+<h1>Performance, without spin</h1>
 <p class="lede">Every point on the line comes from a graded result in your local ledger.</p>
 
 {% set overall = summary.overall %}
@@ -14,18 +14,18 @@
 </div>
 
 <section class="section">
-  <div class="section-head"><div><div class="eyebrow">Bankroll index</div><h2>Watch the picks <em>like a position.</em></h2><p>Starts at 100. Each unit won or lost moves the index one point.</p></div><form method="post" action="{{ url_for('grade') }}" data-loading><button class="button primary" type="submit">Grade finished games</button></form></div>
+  <div class="section-head"><div><div class="eyebrow">Bankroll index</div><h2>Watch the picks like a position</h2><p>Starts at 100. Each unit won or lost moves the index one point.</p></div><form method="post" action="{{ url_for('grade') }}" data-loading><button class="button primary" type="submit">Grade finished games</button></form></div>
   <div class="chart">
     <svg viewBox="0 0 {{ performance.width }} {{ performance.height }}" role="img" aria-label="Graded performance chart">
-      <defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#40e88b" stop-opacity=".28"/><stop offset="1" stop-color="#40e88b" stop-opacity="0"/></linearGradient></defs>
+      <defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".16"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs>
       <g class="chart-grid"><line x1="18" y1="65" x2="882" y2="65"/><line x1="18" y1="130" x2="882" y2="130"/><line x1="18" y1="195" x2="882" y2="195"/></g>
       <polygon class="chart-fill" points="18,250 {{ performance.points }} 882,250"/><polyline class="chart-line" points="{{ performance.points }}"/>
     </svg><div class="chart-label"><span>START · 100.00</span><span>NOW · {{ '%.2f'|format(performance.latest) }}</span></div>
   </div>
 </section>
 
-<section class="section"><div class="section-head"><div><div class="eyebrow">The ledger</div><h2>Every tracked pick.</h2></div></div>
+<section class="section"><div class="section-head"><div><div class="eyebrow">The ledger</div><h2>Every tracked pick</h2></div></div>
 {% if picks %}<div class="table-wrap"><table class="data-table"><thead><tr><th>Pick</th><th>Matchup</th><th>Date</th><th>Price</th><th>Edge</th><th>Status</th><th>Result</th><th>Units</th></tr></thead><tbody>
 {% for pick in picks %}<tr><td><b>{{ pick.team }} {{ pick.market|upper }}{% if pick.line is not none %} {{ '%+g'|format(pick.line) }}{% endif %}</b></td><td>{{ pick.away }} @ {{ pick.home }}</td><td>{{ pick.game_date }}</td><td>{{ '%+d'|format(pick.odds_american) }}</td><td>{{ '%+.1f%%'|format((pick.edge or 0)*100) }}</td><td><span class="pill {{ 'green' if pick.status=='graded' else 'orange' }}">{{ pick.status|replace('_',' ') }}</span></td><td>{% if pick.result %}<span class="pill {{ 'green' if pick.result=='W' else ('red' if pick.result=='L' else '') }}">{{ pick.result }}</span>{% else %}—{% endif %}</td><td>{{ '%+.2f'|format(pick.units_won) if pick.units_won is not none else '—' }}</td></tr>{% endfor %}
-</tbody></table></div>{% else %}<div class="empty">No tracked picks yet. Refresh the slate to create the first watchlist.</div>{% endif %}</section>
+</tbody></table></div>{% else %}<div class="empty">No tracked picks yet. Refresh the board to create the first watchlist.</div>{% endif %}</section>
 {% endblock %}

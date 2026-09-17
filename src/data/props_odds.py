@@ -13,7 +13,7 @@ Verified 2026-09-17 against live responses for both NFL and MLB:
               "price": -113}]}]}]}
 
 Credits are the binding constraint: this endpoint bills **one credit per
-market per event**, so a nine-market pull on a sixteen-game slate is 144 of a
+market per event**, so a nine-market pull across sixteen games is 144 of a
 free plan's 500 monthly credits. Everything here is therefore per-event, on
 demand, cached hard on disk, and refused outright when the remaining balance
 falls below `credit_floor`.

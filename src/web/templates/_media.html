@@ -1,0 +1,39 @@
+{# Reusable club crest and player headshot fragments.
+
+   Both images come from ESPN's CDN and can 404 for a given team or athlete, so
+   each carries a data-monogram; app.js swaps a broken image for that initial
+   rather than leaving a torn-image icon in the row. #}
+
+{% macro crest(abbrev, sport='nfl', size='') -%}
+  {%- if abbrev -%}
+    <img class="crest {{ size }}" loading="lazy" decoding="async"
+         src="{{ team_logo(abbrev, sport) }}" alt="{{ abbrev }}"
+         width="20" height="20" data-monogram="{{ abbrev[:3] }}">
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro headshot(athlete_id, name, sport='nfl', size='') -%}
+  {%- if athlete_id -%}
+    <img class="headshot {{ size }}" loading="lazy" decoding="async"
+         src="{{ player_headshot(athlete_id, sport) }}" alt=""
+         width="25" height="25" data-monogram="{{ name[:1]|upper if name else '?' }}">
+  {%- else -%}
+    <span class="avatar-fallback {{ size }}" aria-hidden="true">{{ name[:1]|upper if name else '?' }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{# The two clubs, side by side, for a game heading. #}
+{% macro matchup(away, home, sport='nfl') -%}
+  <span class="matchup-crests">
+    {{ crest(away, sport) }}<span>{{ away }}</span>
+    <span class="at">@</span>
+    {{ crest(home, sport) }}<span>{{ home }}</span>
+  </span>
+{%- endmacro %}
+
+{# A pick's own badge: the club for a team bet, nothing for a total. #}
+{% macro pick_badge(side, sport='nfl') -%}
+  {%- if side and side|lower not in ['over', 'under'] -%}
+    {{ crest(side, sport, 'sm') }}
+  {%- endif -%}
+{%- endmacro %}

@@ -36,6 +36,9 @@ def create_app(db_path=None) -> Flask:
             "today": dt.date.today().isoformat(),
             "sports": [sport_registry.get(code) for code in sport_registry.enabled_codes()],
             "credits": credits,
+            # Club crests and player headshots, resolved in the templates.
+            "team_logo": sport_registry.team_logo,
+            "player_headshot": sport_registry.player_headshot,
         }
 
     @app.get("/")
@@ -51,14 +54,14 @@ def create_app(db_path=None) -> Flask:
                                pending=pending, open_picks=open_picks,
                                recent=recent, performance=performance)
 
-    @app.get("/slate")
-    def slate():
+    @app.get("/games")
+    def games():
         path = app.config["DB_PATH"]
         day = _date_arg(request.args.get("date"))
         sport = _sport_arg(request.args.get("sport"))
-        cards = board.slate_board(day, sport, db_path=path)
+        cards = board.day_board(day, sport, db_path=path)
         tracked = _tracked_picks(path, day.isoformat(), sport=sport)
-        return render_template("slate.html", active="slate", day=day,
+        return render_template("games.html", active="games", day=day,
                                sport=sport_registry.get(sport), cards=cards,
                                tracked=tracked)
 
@@ -71,7 +74,7 @@ def create_app(db_path=None) -> Flask:
             flash(f"Slate refreshed. {len(suggestions)} qualifying model pick(s) found.", "success")
         except Exception as exc:
             flash(f"Refresh failed: {exc}", "error")
-        return redirect(url_for("slate", date=day.isoformat(), sport=sport))
+        return redirect(url_for("games", date=day.isoformat(), sport=sport))
 
     @app.get("/model-picks")
     def model_picks():
@@ -83,7 +86,7 @@ def create_app(db_path=None) -> Flask:
         if rank not in {"probability", "value"}:
             rank = "probability"
         min_prob = max(0.01, min(0.99, request.args.get("min_prob", 0.55, type=float)))
-        cards = board.slate_board(day, sport, db_path=path)
+        cards = board.day_board(day, sport, db_path=path)
         pool = board.parlay_pool(cards, min_probability=min_prob)
         parlays = optimize(pool, min_legs=legs, max_legs=legs,
                            rank_by=rank, limit=8) if len(pool) >= legs else []
@@ -107,7 +110,7 @@ def create_app(db_path=None) -> Flask:
                 flash("Unknown pick action.", "error")
         except Exception as exc:
             flash(str(exc), "error")
-        return redirect(request.referrer or url_for("slate"))
+        return redirect(request.referrer or url_for("games"))
 
     @app.get("/performance")
     def performance():
@@ -229,8 +232,6 @@ def _performance(path) -> dict:
             "positive": values[-1] >= 100, "width": width, "height": height}
 
 
-app = create_app()
-
-
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8502, debug=False)
+    from waitress import serve
+    serve(create_app(), host="127.0.0.1", port=8502, threads=6)

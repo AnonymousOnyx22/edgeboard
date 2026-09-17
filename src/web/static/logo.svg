@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Edgeboard">
+  <title>Edgeboard</title>
+  <!-- Three rising bars, the tallest breaking past the baseline of the others:
+       the edge. Drawn in currentColor so it inherits whatever it sits on. -->
+  <g fill="currentColor">
+    <rect x="4"  y="19" width="5" height="9"  rx="1.6"/>
+    <rect x="13.5" y="13" width="5" height="15" rx="1.6"/>
+    <rect x="23" y="6"  width="5" height="22" rx="1.6"/>
+  </g>
+  <!-- The trend line that carries through them. -->
+  <path d="M5 16.5 L16 10.5 L26.5 3.5" fill="none" stroke="currentColor"
+        stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+        opacity="0.55"/>
+</svg>

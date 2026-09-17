@@ -210,3 +210,25 @@ def enabled_codes(config: dict | None = None) -> list[str]:
               if (meta or {}).get("enabled") and code in REGISTRY]
     active.sort(key=lambda item: item[1].get("priority", 99))
     return [code for code, _ in active] or [DEFAULT_SPORT]
+
+
+# ----------------------------------------------------------------- imagery
+# ESPN serves club logos and player headshots from a predictable CDN path,
+# verified 2026-09-17 for all three leagues (including the awkward NFL
+# abbreviations WSH and LAR, which resolve correctly).
+LOGO_CDN = "https://a.espncdn.com/i/teamlogos/{league}/500/{abbrev}.png"
+HEADSHOT_CDN = "https://a.espncdn.com/i/headshots/{league}/players/full/{athlete_id}.png"
+
+
+def team_logo(abbrev: str, sport: str = "nfl") -> str:
+    """Club badge for a team abbreviation, in the sport's own spelling."""
+    config = get(sport)
+    return LOGO_CDN.format(league=config.espn_league,
+                           abbrev=(abbrev or "").strip().lower())
+
+
+def player_headshot(athlete_id: str | int, sport: str = "nfl") -> str:
+    """Player headshot. ESPN 404s for players without one, so the markup
+    that uses this needs a fallback for a broken image."""
+    config = get(sport)
+    return HEADSHOT_CDN.format(league=config.espn_league, athlete_id=athlete_id)

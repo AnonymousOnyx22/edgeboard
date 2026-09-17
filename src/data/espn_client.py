@@ -36,9 +36,9 @@ SPORT_LEAGUES = {
     "nba": ("basketball", "nba"),
 }
 
-# NFL slate by US/Eastern kickoff time (config-safe defaults). Field names
-# are local to this module's own computation, not an external API.
-NFL_SLATE_BY_HOUR = [
+# NFL kickoff windows by US/Eastern start time (config-safe defaults). These
+# names are local to this module's own computation, not an external API.
+NFL_WINDOW_BY_HOUR = [
     (0, 11, "sunday_early"),     # 00:00-11:59 ET Sunday (London/morning window)
     (12, 15, "sunday_early"),
     (16, 19, "sunday_late"),
@@ -185,8 +185,8 @@ class EspnClient:
         return out
 
     @staticmethod
-    def nfl_slate(start_utc_iso: str) -> str:
-        """Assign an NFL slate label from the US/Eastern kickoff time."""
+    def nfl_kickoff_window(start_utc_iso: str) -> str:
+        """Label the NFL kickoff window from the US/Eastern start time."""
         start = dt.datetime.fromisoformat(start_utc_iso.replace("Z", "+00:00")).astimezone(ET)
         wd = start.weekday()  # Mon=0 ... Sun=6
         if wd == 0:
@@ -195,9 +195,9 @@ class EspnClient:
             return "thursday"
         if wd == 6:
             hour = start.hour
-            for lo, hi, slate in NFL_SLATE_BY_HOUR:
+            for lo, hi, window in NFL_WINDOW_BY_HOUR:
                 if lo <= hour <= hi:
-                    return slate
+                    return window
             return "sunday_night"
         # SNF/MNF occasionally move to other weekdays (holiday games)
         if start.hour >= 20:
@@ -232,7 +232,7 @@ class EspnClient:
             start_utc = ev.get("date", "")
             game_date = (dt.datetime.fromisoformat(start_utc.replace("Z", "+00:00"))
                          .astimezone(ET).date().isoformat())
-            slate = self.nfl_slate(start_utc) if sport == "nfl" else None
+            window = self.nfl_kickoff_window(start_utc) if sport == "nfl" else None
 
             cur = db.connect(db_path)
             row = cur.execute("SELECT id FROM games WHERE external_id=?", (ev.get("id"),)).fetchone()
@@ -241,14 +241,14 @@ class EspnClient:
                 cur.execute(
                     """UPDATE games SET away_team=?, home_team=?, start_utc=?, game_date=?, slate=?,
                        status=?, away_score=?, home_score=? WHERE id=?""",
-                    (away_id, home_id, start_utc, game_date, slate, state,
+                    (away_id, home_id, start_utc, game_date, window, state,
                      away_score, home_score, row["id"]))
             else:
                 cur.execute(
                     """INSERT INTO games (sport_id, external_id, away_team, home_team,
                        start_utc, game_date, slate, status, away_score, home_score)
                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                    (sport_id, ev.get("id"), away_id, home_id, start_utc, game_date, slate,
+                    (sport_id, ev.get("id"), away_id, home_id, start_utc, game_date, window,
                      state, away_score, home_score))
             cur.commit()
             cur.close()

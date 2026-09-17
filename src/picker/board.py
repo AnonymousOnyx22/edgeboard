@@ -1,11 +1,11 @@
-"""The board: every game on a slate, priced, modelled and ranked.
+"""The board: every game on a given day, priced, modelled and ranked.
 
 This is the read-only analysis layer the dashboard renders. It never writes
 picks - saving a slip is a separate, deliberate action.
 
 Two depths, because they cost very different amounts of time:
 
-  slate_board()   fast. Elo + market prices + team head-to-head history, all
+  day_board()     fast. Elo + market prices + team head-to-head history, all
                   from the local DB and the cached schedule frame.
   deep_matchup()  slow. Adds every skill player's record against this exact
                   opponent, pulled live from ESPN gamelogs.
@@ -63,7 +63,7 @@ class GameCard:
     home: str
     away: str
     start_utc: str
-    slate: str
+    kickoff_window: str      # NFL only: thursday, sunday_early, sunday_night...
     status: str
     sport: str = "nfl"
     home_espn_id: str = ""
@@ -145,7 +145,7 @@ def games_on(day: dt.date, sport: str = "nfl", db_path=db.DEFAULT_DB) -> list[di
     return [dict(r) for r in rows]
 
 
-def slate_board(day: dt.date | None = None, sport: str = "nfl",
+def day_board(day: dt.date | None = None, sport: str = "nfl",
                 db_path=db.DEFAULT_DB, min_edge: float | None = None,
                 history=None, elo=None,
                 include_started: bool = False) -> list[GameCard]:
@@ -170,7 +170,7 @@ def slate_board(day: dt.date | None = None, sport: str = "nfl",
         prediction = blended_prediction(row["home"], row["away"], elo, series)
         card = GameCard(
             game_id=row["id"], home=row["home"], away=row["away"],
-            start_utc=row["start_utc"], slate=row["slate"] or "",
+            start_utc=row["start_utc"], kickoff_window=row["slate"] or "",
             status=row["status"], sport=sport,
             home_espn_id=str(row["home_espn_id"] or ""),
             away_espn_id=str(row["away_espn_id"] or ""),
@@ -183,6 +183,10 @@ def slate_board(day: dt.date | None = None, sport: str = "nfl",
                                               db_path, rates)
         cards.append(card)
     return cards
+
+
+# Older name, kept so nothing breaks mid-rename.
+slate_board = day_board
 
 
 def blended_prediction(home: str, away: str, elo: models.EloSystem,

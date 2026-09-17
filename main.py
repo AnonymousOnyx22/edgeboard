@@ -36,11 +36,12 @@ def cmd_dashboard(_args) -> None:
     import threading
     import webbrowser
     from src.web.app import create_app
+    from waitress import serve
 
     url = "http://127.0.0.1:8502"
     threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     print(f"Opening Edgeboard locally at {url}")
-    create_app().run(host="127.0.0.1", port=8502, debug=False)
+    serve(create_app(), host="127.0.0.1", port=8502, threads=6)
 
 
 def cmd_sync(args) -> None:
@@ -59,7 +60,7 @@ def cmd_board(args) -> None:
     from src.picker import board
     day = _day(args.date)
     for code in _sports(args):
-        cards = board.slate_board(day, code, min_edge=args.min_edge)
+        cards = board.day_board(day, code, min_edge=args.min_edge)
         config = sport_registry.get(code)
         print(f"\n{config.emoji} {config.name} - {day.isoformat()} "
               f"({len(cards)} games)")
@@ -115,7 +116,7 @@ def cmd_parlay(args) -> None:
     day = _day(args.date)
     cards = []
     for code in _sports(args):
-        cards += board.slate_board(day, code)
+        cards += board.day_board(day, code)
     pool = board.parlay_pool(cards, min_probability=args.min_leg_prob)
     if len(pool) < 2:
         raise SystemExit("Not enough qualifying legs. Try a lower --min-leg-prob.")
@@ -185,7 +186,7 @@ def _find_card(game_id: int, date: str | None):
     from src.picker import board
     day = _day(date)
     for code in sport_registry.enabled_codes():
-        for card in board.slate_board(day, code):
+        for card in board.day_board(day, code):
             if card.game_id == game_id:
                 return card
     return None
@@ -205,7 +206,7 @@ def main() -> None:
     p.add_argument("--days", type=int, default=3, choices=range(1, 15))
     p.add_argument("--force", action="store_true", help="bypass the odds cache")
 
-    p = sub.add_parser("board", help="show the modelled slate")
+    p = sub.add_parser("board", help="show the modelled games")
     p.add_argument("--sport", choices=codes)
     p.add_argument("--date")
     p.add_argument("--min-edge", type=float, default=None,

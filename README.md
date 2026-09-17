@@ -126,6 +126,10 @@ src/picker/
   parlay_builder.py  parlay construction and combinatorial search
   confidence.py      the 1-10 confidence score
   edge.py            odds maths - pure functions, fully tested
+src/web/
+  app.py             local Flask routes and application server
+  templates/         regular server-rendered HTML pages
+  static/            the complete visual system and browser behaviour
 docs/ENGINE_API.md   interface reference for the UI layer
 ```
 
@@ -158,7 +162,12 @@ pip install -r requirements.txt
 cp .env.example .env          # add an Odds API key, or don't
 python main.py sync           # schedules and game lines
 python main.py board          # today's slate with edges
+python main.py dashboard      # open the local website at 127.0.0.1:8502
 ```
+
+The website is a normal Flask application served by Waitress on the loopback
+interface. It is accessible only from this computer by default. It has no
+Streamlit dependency, hosted dashboard, developer toolbar, or framework UI.
 
 ```bash
 python main.py board --sport mlb           # one sport

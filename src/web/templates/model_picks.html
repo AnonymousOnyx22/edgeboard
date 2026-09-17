@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Edgeboard · Model Picks{% endblock %}
+{% import "_media.html" as media with context %}
+{% block title %}Edgeboard · Model picks{% endblock %}
 {% block content %}
-<div class="eyebrow">02 · Build the slip</div>
-<h1>Model picks,<br><em>ranked to hit.</em></h1>
+<div class="eyebrow">Build the slip</div>
+<h1>Model picks, ranked to hit</h1>
 <p class="lede">A parlay lab built around transparent probability—not a mystery “lock” score.</p>
 
 <div class="metric-grid">
@@ -22,15 +23,15 @@
 </form>
 
 <section class="section">
-  <div class="section-head"><div><div class="eyebrow">{{ sport.name }} · {{ day.strftime('%B %d') }}</div><h2>Top {{ legs }}-leg combinations.</h2><p>Different-game legs only. Combined probability assumes independence.</p></div></div>
+  <div class="section-head"><div><div class="eyebrow">{{ sport.name }} · {{ day.strftime('%B %d') }}</div><h2>Top {{ legs }}-leg combinations</h2><p>Different-game legs only. Combined probability assumes independence.</p></div></div>
   {% if parlays %}<div class="parlay-list">
   {% for parlay in parlays %}<article class="parlay">
     <div class="panel-head"><span class="parlay-rank">RANK {{ '%02d'|format(loop.index) }}</span><span class="pill {{ 'green' if parlay.expected_value >= 0 else 'orange' }}">{{ 'positive EV' if parlay.expected_value >= 0 else 'watch' }}</span></div>
     <div class="parlay-price">{{ parlay.american_display() }}</div>
     <div class="parlay-metrics"><span><small>Hit chance</small><b>{{ '%.1f%%'|format(parlay.combined_model_prob*100) }}</b></span><span><small>Market implied</small><b>{{ '%.1f%%'|format(parlay.implied_prob*100) }}</b></span><span><small>EV / 1u</small><b style="color:{{ 'var(--green)' if parlay.expected_value >= 0 else 'var(--red)' }}">{{ '%+.2f'|format(parlay.expected_value) }}u</b></span></div>
-    <div class="legs">{% for leg in parlay.legs %}<div class="leg"><span>{{ leg.display() }}</span><span>{{ '%+d'|format(leg.odds_american|int) }} · {{ '%.0f%%'|format(leg.model_prob*100) }}</span></div>{% endfor %}</div>
+    <div class="legs">{% for leg in parlay.legs %}<div class="leg"><span>{% if leg.athlete_id %}{{ media.headshot(leg.athlete_id, leg.team, sport.code, "sm") }}{% else %}{{ media.pick_badge(leg.team, sport.code) }}{% endif %}<span class="leg-label">{{ leg.display() }}</span></span><span>{{ '%+d'|format(leg.odds_american|int) }} · {{ '%.0f%%'|format(leg.model_prob*100) }}</span></div>{% endfor %}</div>
     {% for note in parlay.notes %}<p class="note">! {{ note }}</p>{% endfor %}
   </article>{% endfor %}
-  </div>{% else %}<div class="empty"><h3>Not enough eligible legs.</h3><p>Refresh the slate, choose another date, or lower the minimum leg probability.</p><a class="button primary" href="{{ url_for('slate',date=day.isoformat(),sport=sport.code) }}">Open the slate</a></div>{% endif %}
+  </div>{% else %}<div class="empty"><h3>Not enough eligible legs.</h3><p>Refresh the games, choose another date, or lower the minimum leg probability.</p><a class="button primary" href="{{ url_for('games',date=day.isoformat(),sport=sport.code) }}">Open the board</a></div>{% endif %}
 </section>
 {% endblock %}

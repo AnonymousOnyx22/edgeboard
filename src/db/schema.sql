@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS games (
     home_team   INTEGER REFERENCES teams(id),
     start_utc   TEXT NOT NULL,
     game_date   TEXT,                          -- league-local calendar date
-    slate       TEXT,                          -- thursday / sunday_early / ...
+    slate       TEXT,                          -- NFL kickoff window: thursday,
+                                               -- sunday_early, sunday_night, ...
+                                               -- (column name kept for existing DBs)
     status      TEXT NOT NULL DEFAULT 'scheduled',  -- scheduled / in_progress / final / postponed
     week        INTEGER,
     away_score  INTEGER,

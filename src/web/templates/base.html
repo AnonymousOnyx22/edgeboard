@@ -4,42 +4,137 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#08080a">
   <title>{% block title %}Edgeboard{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23ffffff'/><g fill='%23000000'><rect x='4' y='19' width='5' height='9' rx='1.6'/><rect x='13.5' y='13' width='5' height='15' rx='1.6'/><rect x='23' y='6' width='5' height='22' rx='1.6'/></g></svg>">
+  <script>
+    /* Set before paint, so the reveal styles only ever apply when a script is
+       around to undo them. The timeout is a failsafe: if app.js never runs the
+       styles are dropped, because invisible content is the worst failure. */
+    document.documentElement.classList.add('js');
+    setTimeout(function () {
+      var root = document.documentElement;
+      if (!root.hasAttribute('data-reveal-ready')) root.classList.remove('js');
+    }, 2500);
+  </script>
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
 </head>
-<body>
+<body data-drawer="closed">
+  <div class="scrim" id="scrim" aria-hidden="true"></div>
+
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="{{ url_for('home') }}">
-      <span class="brand-mark">↗</span>
-      <span><strong>Edgeboard</strong><small>LOCAL RESEARCH DESK</small></span>
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
+          <g fill="currentColor">
+            <rect x="4" y="19" width="5" height="9" rx="1.6"/>
+            <rect x="13.5" y="13" width="5" height="15" rx="1.6"/>
+            <rect x="23" y="6" width="5" height="22" rx="1.6"/>
+          </g>
+        </svg>
+      </span>
+      <span class="brand-copy">
+        <span class="brand-name">Edgeboard</span>
+      </span>
     </a>
-    <nav>
+
+    <nav aria-label="Primary">
       <span class="nav-label">Workspace</span>
-      <a class="nav-item {{ 'active' if active == 'home' }}" href="{{ url_for('home') }}"><i>⌂</i><span>Overview</span></a>
-      <a class="nav-item {{ 'active' if active == 'slate' }}" href="{{ url_for('slate') }}"><i>◆</i><span>Today's slate</span></a>
-      <a class="nav-item {{ 'active' if active == 'model' }}" href="{{ url_for('model_picks') }}"><i>⌁</i><span>Model picks</span></a>
-      <a class="nav-item {{ 'active' if active == 'performance' }}" href="{{ url_for('performance') }}"><i>↗</i><span>Performance</span></a>
+
+      <a class="nav-item {{ 'active' if active == 'home' }}" href="{{ url_for('home') }}"
+         {% if active == 'home' %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M2.5 6.8 8 2.5l5.5 4.3V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"
+                stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+        </svg>
+        <span class="nav-text">Overview</span>
+      </a>
+
+      <a class="nav-item {{ 'active' if active == 'games' }}" href="{{ url_for('games') }}"
+         {% if active == 'games' %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.6"
+                stroke="currentColor" stroke-width="1.3"/>
+          <path d="M2.2 6.4h11.6M6.2 6.4v6.4" stroke="currentColor" stroke-width="1.3"/>
+        </svg>
+        <span class="nav-text">Today's games</span>
+      </a>
+
+      <a class="nav-item {{ 'active' if active == 'model' }}" href="{{ url_for('model_picks') }}"
+         {% if active == 'model' %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M2.5 11.5 6 7l3 2.6 4.5-5.6" stroke="currentColor" stroke-width="1.4"
+                stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="6" cy="7" r="1.2" fill="currentColor"/>
+        </svg>
+        <span class="nav-text">Model picks</span>
+      </a>
+
+      <a class="nav-item {{ 'active' if active == 'performance' }}" href="{{ url_for('performance') }}"
+         {% if active == 'performance' %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M3 13V9M8 13V4M13 13v-6" stroke="currentColor" stroke-width="1.4"
+                stroke-linecap="round"/>
+        </svg>
+        <span class="nav-text">Performance</span>
+      </a>
+
       <span class="nav-label">System</span>
-      <a class="nav-item {{ 'active' if active == 'settings' }}" href="{{ url_for('settings') }}"><i>⚙</i><span>Settings</span></a>
+
+      <a class="nav-item {{ 'active' if active == 'settings' }}" href="{{ url_for('settings') }}"
+         {% if active == 'settings' %}aria-current="page"{% endif %}>
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="8" cy="8" r="2.1" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6"
+                stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <span class="nav-text">Settings</span>
+      </a>
     </nav>
+
+    <button class="nav-toggle" id="navToggle" type="button"
+            aria-controls="sidebar" aria-expanded="true">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Collapse</span>
+    </button>
+
     <div class="sidebar-foot">
-      {% if credits %}<span class="connection"><b></b> Odds connected</span><small>{{ credits.remaining }} credits remaining</small>
-      {% else %}<span class="connection muted"><b></b> ESPN fallback</span><small>Add an Odds API key for live books</small>{% endif %}
-      <p>Local only · 19+<br>Models are estimates, not guarantees.</p>
+      {% if credits %}
+        <span class="connection"><b></b> Odds connected</span>
+        <small>{{ credits.remaining }} credits remaining</small>
+      {% else %}
+        <span class="connection muted"><b></b> ESPN fallback</span>
+        <small>Add an Odds API key for live books</small>
+      {% endif %}
+      <p>19+ · Please gamble responsibly.<br>Projections are estimates, not guarantees.</p>
     </div>
   </aside>
+
   <div class="app-shell">
     <header class="topbar">
-      <button class="menu-button" id="menuButton" aria-label="Toggle navigation">☰</button>
-      <span class="local-badge"><b></b> Running locally</span>
+      <button class="menu-button" id="menuButton" type="button"
+              aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" stroke="currentColor"
+                stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </button>
       <span class="top-date">{{ today }}</span>
     </header>
+
     <main>
       {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}<div class="flash-stack">
-          {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
-        </div>{% endif %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
       {% endwith %}
       {% block content %}{% endblock %}
     </main>

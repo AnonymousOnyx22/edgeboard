@@ -1,7 +1,7 @@
 """Picker engine: syncs games and game-line prices, and persists model picks.
 
 `Picker` works for any sport in the registry; `NflPicker` is the NFL-bound
-alias the older call sites use. Reading and ranking a slate lives in
+alias the older call sites use. Reading and ranking a day's games lives in
 picker/board.py - this module is the write side: syncing, and saving picks.
 
 Nothing is posted anywhere. Approval happens in the dashboard.
