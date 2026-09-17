@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Edgeboard · Overview{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <div class="eyebrow">The local sports research desk</div>
+    <h1>Your edge,<br><em>tracked properly.</em></h1>
+    <p class="lede">Model the slate, build a disciplined parlay, and see exactly how the picks perform. Your data stays on this machine.</p>
+    <div class="hero-actions">
+      <a class="button primary" href="{{ url_for('slate') }}">Open today’s slate →</a>
+      <a class="button ghost" href="{{ url_for('model_picks') }}">Build a parlay</a>
+    </div>
+  </div>
+  <div class="hero-panel">
+    <div class="panel-head"><div><span>Model performance</span><h3>Bankroll index</h3></div><span>{{ 'UP' if performance.positive else 'DOWN' }}</span></div>
+    <div class="chart" style="border:0;padding:6px 0;background:transparent">
+      <svg viewBox="0 0 {{ performance.width }} {{ performance.height }}" role="img" aria-label="Performance index">
+        <defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#40e88b" stop-opacity=".28"/><stop offset="1" stop-color="#40e88b" stop-opacity="0"/></linearGradient></defs>
+        <polygon class="chart-fill" points="18,250 {{ performance.points }} 882,250"/>
+        <polyline class="chart-line" points="{{ performance.points }}"/>
+      </svg>
+    </div>
+    <div class="chart-label"><span>START · 100.00</span><span>NOW · {{ '%.2f'|format(performance.latest) }}</span></div>
+  </div>
+</section>
+
+<div class="metric-grid">
+  <div class="metric"><small>Awaiting review</small><strong>{{ pending }}</strong></div>
+  <div class="metric"><small>Open positions</small><strong>{{ open_picks }}</strong></div>
+  <div class="metric"><small>Record</small><strong>{{ summary.wins }}–{{ summary.losses }}</strong></div>
+  <div class="metric"><small>Net units</small><strong class="{{ 'positive' if summary.units >= 0 else 'negative' }}">{{ '%+.1f'|format(summary.units) }}u</strong></div>
+</div>
+
+<section class="section">
+  <div class="section-head"><div><div class="eyebrow">The daily run</div><h2>Three moves. <em>One desk.</em></h2></div></div>
+  <div class="card-grid">
+    <a class="card" href="{{ url_for('slate') }}"><div class="card-number">01 · SCAN</div><h3>Read the slate</h3><p>Sync schedules and live book prices, then inspect every modelled edge by matchup.</p><span class="card-link">Enter the board →</span></a>
+    <a class="card" href="{{ url_for('model_picks') }}"><div class="card-number">02 · BUILD</div><h3>Shape the parlay</h3><p>Compare hit probability, implied probability, expected value, and every individual leg.</p><span class="card-link">Open model picks →</span></a>
+    <a class="card" href="{{ url_for('performance') }}"><div class="card-number">03 · TRACK</div><h3>Watch the record</h3><p>Follow actual graded performance as an index, with a full ledger behind the line.</p><span class="card-link">See performance →</span></a>
+  </div>
+</section>
+
+{% if recent %}<section class="section">
+  <div class="section-head"><div><div class="eyebrow">Watchlist</div><h2>Latest positions.</h2></div><a class="button ghost" href="{{ url_for('performance') }}">Full ledger</a></div>
+  <div class="table-wrap"><table class="data-table"><thead><tr><th>Pick</th><th>Matchup</th><th>Price</th><th>Confidence</th><th>Status</th><th>Result</th></tr></thead><tbody>
+  {% for pick in recent %}<tr><td><b>{{ pick.team }} {{ pick.market|upper }}{% if pick.line is not none %} {{ '%+g'|format(pick.line) }}{% endif %}</b></td><td>{{ pick.away }} @ {{ pick.home }}</td><td>{{ '%+d'|format(pick.odds_american) }}</td><td>{{ pick.confidence|int if pick.confidence is not none else '—' }}/10</td><td><span class="pill orange">{{ pick.status|replace('_',' ') }}</span></td><td>{{ pick.result or 'Open' }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>{% endif %}
+{% endblock %}

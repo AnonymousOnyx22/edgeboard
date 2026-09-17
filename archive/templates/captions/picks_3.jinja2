@@ -1,0 +1,13 @@
+Episode {{ ep.number }} — {{ ctx.slate_label }} ✍️
+
+I keep it simple. These are my plays, graded publicly, every single one:
+
+{% for p in ctx.plays %}
+{{ loop.index }}. {{ p.team }} {{ p.market|upper }}{% if p.line %} {{ '%+.1f'|format(p.line) }}{% endif %} ({{ p.odds }}) ← {{ p.conf }}
+{% endfor %}
+
+Since I started posting: {{ record.wins }}W {{ record.losses }}L, {{ record.units }}u, {{ record.hit_rate }} hit rate.
+
+Honest numbers, no hype. Follow for daily picks.
+
+{{ disclaimer }}

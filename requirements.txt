@@ -1,0 +1,22 @@
+# Core
+Flask>=3.1
+pandas>=2.2
+numpy>=1.26
+jinja2>=3.1
+python-dotenv>=1.0
+PyYAML>=6.0
+requests>=2.32
+
+# Model
+scikit-learn>=1.5
+
+# Images
+playwright>=1.48
+
+# Sports stats
+nfl-data-py>=3.5
+nba-api>=1.4
+MLB-StatsAPI>=1.6
+
+# Tests
+pytest>=8.0

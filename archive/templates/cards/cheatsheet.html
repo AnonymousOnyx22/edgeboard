@@ -1,0 +1,24 @@
+{% include '_slide_head.html' %}
+<body>
+  <div class="wrap">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span class="chip">SUNDAY CHEAT SHEET</span>
+      <span class="chip">{{ slate_label }}</span>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+      <div class="h1" style="font-size:78px; text-transform:uppercase;">Every play, one page</div>
+      <div style="margin-top:40px; display:flex; flex-direction:column; gap:16px;">
+        {% for pick in plays %}
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05);
+                    border-radius:16px; padding:20px 26px;">
+          <span style="font-size:28px;">{{ pick.matchup }}</span>
+          <span class="h1" style="font-size:30px;">{{ pick.bet }} <span class="accent">{{ pick.odds }}</span></span>
+          <span class="chip" style="font-size:18px;">{{ pick.conf }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="disclaimer">{{ disclaimer }}</div>
+</body>
+</html>

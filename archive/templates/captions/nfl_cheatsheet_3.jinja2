@@ -1,0 +1,13 @@
+Episode {{ ep.number }} — Sunday, one page
+
+Here's the whole Sunday card in my order of confidence:
+
+{% for p in ctx.plays %}
+{{ loop.index }}. {{ p.matchup }} → {{ p.team }} {{ '%+.1f'|format(p.line) if p.line else '' }} @ {{ p.odds }} ({{ p.conf }})
+{% endfor %}
+
+Season: {{ record.wins }}-{{ record.losses }} · {{ record.units }}u
+
+Everything I post gets graded publicly. Follow and hold me to it.
+
+{{ disclaimer }}

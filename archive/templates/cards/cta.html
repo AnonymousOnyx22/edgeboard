@@ -1,0 +1,14 @@
+{% include '_slide_head.html' %}
+<body>
+  <div class="wrap" style="align-items:center;">
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
+      <div class="h1" style="font-size:88px; text-transform:uppercase;">Save this</div>
+      <div style="margin-top:40px; font-size:40px; line-height:1.5;">{{ cta.follow }}</div>
+      <div class="emo" style="margin-top:40px; background:rgba(255,255,255,0.06); border-radius:999px;
+                              padding:20px 44px; font-size:38px;">{{ cta.prompt }}</div>
+      <div style="margin-top:56px; font-size:26px; color:var(--muted);">{{ brand.handle }} · {{ brand.tagline }}</div>
+    </div>
+  </div>
+  <div class="disclaimer">{{ disclaimer }}</div>
+</body>
+</html>

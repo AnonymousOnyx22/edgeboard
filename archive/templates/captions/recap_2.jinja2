@@ -1,0 +1,15 @@
+Episode {{ ep.number }} — Full recap
+
+Honest recap. Hits, misses, and ties:
+
+{% for r in ctx.results %}
+{{ '✅' if r.result=='W' else ('❌' if r.result=='L' else '➖') }} {{ r.label }}
+{% endfor %}
+
+My biggest regret today: {{ ctx.missed }}
+
+{{ record.wins }}W-{{ record.losses }}L-{{ record.pushes }}P ({{ record.units }}u) on the season.
+
+Winning days are easy to post. I post the losses too. That's the point.
+
+{{ disclaimer }}

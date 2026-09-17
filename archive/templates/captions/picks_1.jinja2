@@ -1,0 +1,15 @@
+Episode {{ ep.number }} — {{ ctx.slate_label }} 🎯
+
+Straight to the point. Here's what I'm doing today:
+
+{% for p in ctx.plays %}
+{{ loop.index }}. {{ p.team }} {{ p.market|upper }}{% if p.line %} {{ '%+.1f'|format(p.line) }}{% endif %} @ {{ p.odds }} (Confidence: {{ p.conf }})
+{% endfor %}
+
+{% if ctx.combined_odds %}My combine for the day: {{ ctx.combined_odds }}{% endif %}
+
+Season record: {{ record.wins }}-{{ record.losses }} ({{ record.hit_rate }}) · {{ record.units }}u
+
+Save this and follow for daily picks. Comment TAIL or FADE 👇
+
+{{ disclaimer }}

@@ -1,0 +1,15 @@
+Episode {{ ep.number }} — How we did
+
+Grading done. Every pick accounted for:
+
+{% for r in ctx.results %}
+{{ '✅' if r.result=='W' else ('❌' if r.result=='L' else '➖') }} {{ r.label }} @ {{ r.odds }}
+{% endfor %}
+
+Record now: {{ record.wins }}-{{ record.losses }} ({{ record.units }}u, {{ record.hit_rate }}).
+
+Lesson from this one: {{ ctx.missed }}
+
+New picks tomorrow. Follow {{ brand.handle }}
+
+{{ disclaimer }}

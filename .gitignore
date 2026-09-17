@@ -1,0 +1,34 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Local database
+data/db.sqlite*
+
+# Cached API responses. These are rebuilt on demand and would otherwise put
+# hundreds of throwaway JSON files in the repo.
+data/espn_cache/
+data/player_cache/
+data/props_cache/
+data/schedule_cache/
+data/odds_cache/
+data/samples/
+data/credits.json
+data/ig_cache.json
+data/_preview/
+output/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

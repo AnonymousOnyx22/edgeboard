@@ -1,0 +1,54 @@
+# Brand identity used by the content generator and dashboard.
+# Edit via the Templates page in the dashboard - no Python needed.
+
+brand:
+  name: "Your Handle"
+  handle: "@yourhandle"
+  tagline: "Sports bettor. Data-informed opinion, my own money."
+  logo: "assets/logo.png"     # blank = text-only slides
+  colors:
+    primary: "#111827"        # dark background
+    accent: "#F59E0B"         # gold/amber
+    good: "#10B981"           # green (wins / checks)
+    bad: "#EF4444"            # red (losses / x)
+    neutral: "#6B7280"        # grey
+    text_light: "#F9FAFB"
+    text_muted: "#9CA3AF"
+  fonts:
+    heading: "Bebas Neue"
+    body: "Inter"
+  sport_accents:
+    nfl: "#013369"
+    mlb: "#041E42"
+    nhl: "#006D5B"
+    nba: "#C8102E"
+
+disclaimer: "19+ | For entertainment only | Please gamble responsibly | ConnexOntario 1-866-531-2600"
+
+banned_words: ["guaranteed", "lock", "free money", "sure thing", "can't lose"]
+
+hashtags:
+  default:
+    - "#SportsBetting"
+    - "#BettingPicks"
+    - "#FreePicks"
+    - "#GamblingX"
+    - "#ResponsibleGambling"
+  nfl:
+    - "#NFLPicks"
+    - "#NFLBetting"
+    - "#SundayFootball"
+  mlb:
+    - "#MLBPicks"
+    - "#MLBBetting"
+  nhl:
+    - "#NHLOdds"
+    - "#NHLPicks"
+  nba:
+    - "#NBAPicks"
+    - "#NBABetting"
+
+cta:
+  save: "Save this post"
+  follow: "Follow for daily picks"
+  prompt: "Comment TAIL or FADE on every pick 👇"

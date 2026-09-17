@@ -1,0 +1,93 @@
+# Central tuning for the parlay picker: stat model, confidence, parlay search.
+
+edge:
+  target: 0.03            # min edge (model_prob - implied_vigfree) to show a line
+  max_edge_display: 0.10  # edge that maps to a full 10 on the edge scale
+
+confidence:
+  # Confidence = clamp(round( wE*edge_score + wP*prob_score + wQ*quality_score ), 1, 10)
+  weights:
+    edge: 0.45
+    probability: 0.35
+    quality: 0.20
+  display: "scale"        # "scale" -> 8/10  |  "percent" -> 80%  |  "stars" -> *****
+  quality_penalties:
+    missing_starter_confirmation: 2.0   # starting QB not confirmed
+    missing_injury_data: 1.0
+    early_season_small_sample: 1.0      # fewer than N games of model history
+    small_sample_threshold: 4
+    missing_stat_feed: 1.0
+    extreme_weather: 1.0
+    no_head_to_head: 1.5                # these two have not met in the sample
+
+units:
+  tiers:                  # overridable per-pick in the dashboard
+    1: 5.5                # confidence <= 5.5  -> 1u
+    2: 7.5                # confidence <= 7.5  -> 2u
+    3: 10                 # confidence > 7.5   -> 3u
+
+# Game-total model, per sport. `base` is the league-average total the model
+# starts from; head-to-head scoring pulls it from there. Leave a sport out to
+# use the default in src/data/sports.py.
+total_model:
+  nfl:
+    base: 43.0
+    sd: 12.0
+  mlb:
+    base: 8.5
+    sd: 4.2
+  nhl:
+    base: 6.1
+    sd: 2.5
+
+head_to_head:
+  seasons_back: 6         # how far back to look for prior meetings
+  max_meetings: 8         # most recent N meetings used
+  player_seasons: 3       # seasons of player gamelogs to pull (incl. current)
+
+props:
+  target_probability: 0.72   # the line search aims for this hit rate
+  min_probability: 0.70      # props below this are not shown
+  require_head_to_head: false  # true = only props with a prior game vs this opponent
+  max_players_per_team: 12
+  assumed_odds: -110         # props have no free market price; this is a display
+                             # assumption only, and is labelled as such
+
+parlay:
+  min_legs: 2
+  max_legs: 4
+  allow_same_game: false     # true = same-game parlays, probability discounted
+  search_pool: 18            # strongest N legs fed to the combination search
+  min_leg_probability: 0.55
+
+sports:
+  nfl:
+    enabled: true
+    priority: 1
+  mlb:
+    enabled: true
+    priority: 2
+  nhl:
+    enabled: true
+    priority: 3
+
+# NFL games are grouped into slates; MLB and NHL are not.
+slates:
+  nfl:
+    - thursday
+    - sunday_early
+    - sunday_late
+    - sunday_night
+    - monday_night
+
+# Odds API credit protection. Prop pulls cost one credit per market per game,
+# so the picker refuses to spend below this many remaining credits.
+credits:
+  floor: 50
+
+odds:
+  api_base: "https://api.the-odds-api.com/v4/sports"
+  region: "us"
+  markets: ["h2h", "spreads", "totals"]
+  cache_days: 1           # never re-fetch same-day odds within this window
+  bookmakers: ~           # null = use all; or e.g. ["fanduel", "draftkings"]

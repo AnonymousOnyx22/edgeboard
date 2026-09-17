@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}Edgeboard{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="{{ url_for('home') }}">
+      <span class="brand-mark">↗</span>
+      <span><strong>Edgeboard</strong><small>LOCAL RESEARCH DESK</small></span>
+    </a>
+    <nav>
+      <span class="nav-label">Workspace</span>
+      <a class="nav-item {{ 'active' if active == 'home' }}" href="{{ url_for('home') }}"><i>⌂</i><span>Overview</span></a>
+      <a class="nav-item {{ 'active' if active == 'slate' }}" href="{{ url_for('slate') }}"><i>◆</i><span>Today's slate</span></a>
+      <a class="nav-item {{ 'active' if active == 'model' }}" href="{{ url_for('model_picks') }}"><i>⌁</i><span>Model picks</span></a>
+      <a class="nav-item {{ 'active' if active == 'performance' }}" href="{{ url_for('performance') }}"><i>↗</i><span>Performance</span></a>
+      <span class="nav-label">System</span>
+      <a class="nav-item {{ 'active' if active == 'settings' }}" href="{{ url_for('settings') }}"><i>⚙</i><span>Settings</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      {% if credits %}<span class="connection"><b></b> Odds connected</span><small>{{ credits.remaining }} credits remaining</small>
+      {% else %}<span class="connection muted"><b></b> ESPN fallback</span><small>Add an Odds API key for live books</small>{% endif %}
+      <p>Local only · 19+<br>Models are estimates, not guarantees.</p>
+    </div>
+  </aside>
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="menu-button" id="menuButton" aria-label="Toggle navigation">☰</button>
+      <span class="local-badge"><b></b> Running locally</span>
+      <span class="top-date">{{ today }}</span>
+    </header>
+    <main>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="flash-stack">
+          {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+        </div>{% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

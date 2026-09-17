@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Edgeboard · Model Picks{% endblock %}
+{% block content %}
+<div class="eyebrow">02 · Build the slip</div>
+<h1>Model picks,<br><em>ranked to hit.</em></h1>
+<p class="lede">A parlay lab built around transparent probability—not a mystery “lock” score.</p>
+
+<div class="metric-grid">
+  <div class="metric"><small>Graded success rate</small><strong>{{ '%.1f%%'|format(summary.hit_rate*100) if summary.decisions else '—' }}</strong></div>
+  <div class="metric"><small>Model record</small><strong>{{ summary.wins }}–{{ summary.losses }}</strong></div>
+  <div class="metric"><small>Model ROI</small><strong class="{{ 'positive' if summary.roi >= 0 else 'negative' }}">{{ '%+.1f%%'|format(summary.roi*100) if summary.decisions else '—' }}</strong></div>
+  <div class="metric"><small>Eligible legs</small><strong>{{ pool|length }}</strong></div>
+</div>
+
+<form method="get" class="filters">
+  <div class="field"><label>Date</label><input type="date" name="date" value="{{ day.isoformat() }}"></div>
+  <div class="field"><label>Sport</label><select name="sport">{% for item in sports %}<option value="{{ item.code }}" {{ 'selected' if item.code == sport.code }}>{{ item.name }}</option>{% endfor %}</select></div>
+  <div class="field"><label>Legs</label><select name="legs">{% for n in range(2,7) %}<option {{ 'selected' if n == legs }}>{{ n }}</option>{% endfor %}</select></div>
+  <div class="field"><label>Rank by</label><select name="rank"><option value="probability" {{ 'selected' if rank=='probability' }}>Most likely</option><option value="value" {{ 'selected' if rank=='value' }}>Best value</option></select></div>
+  <div class="field"><label>Minimum leg probability</label><input type="number" name="min_prob" min="0.01" max="0.99" step="0.01" value="{{ min_prob }}"></div>
+  <button class="button primary" type="submit">Rebuild rankings</button>
+</form>
+
+<section class="section">
+  <div class="section-head"><div><div class="eyebrow">{{ sport.name }} · {{ day.strftime('%B %d') }}</div><h2>Top {{ legs }}-leg combinations.</h2><p>Different-game legs only. Combined probability assumes independence.</p></div></div>
+  {% if parlays %}<div class="parlay-list">
+  {% for parlay in parlays %}<article class="parlay">
+    <div class="panel-head"><span class="parlay-rank">RANK {{ '%02d'|format(loop.index) }}</span><span class="pill {{ 'green' if parlay.expected_value >= 0 else 'orange' }}">{{ 'positive EV' if parlay.expected_value >= 0 else 'watch' }}</span></div>
+    <div class="parlay-price">{{ parlay.american_display() }}</div>
+    <div class="parlay-metrics"><span><small>Hit chance</small><b>{{ '%.1f%%'|format(parlay.combined_model_prob*100) }}</b></span><span><small>Market implied</small><b>{{ '%.1f%%'|format(parlay.implied_prob*100) }}</b></span><span><small>EV / 1u</small><b style="color:{{ 'var(--green)' if parlay.expected_value >= 0 else 'var(--red)' }}">{{ '%+.2f'|format(parlay.expected_value) }}u</b></span></div>
+    <div class="legs">{% for leg in parlay.legs %}<div class="leg"><span>{{ leg.display() }}</span><span>{{ '%+d'|format(leg.odds_american|int) }} · {{ '%.0f%%'|format(leg.model_prob*100) }}</span></div>{% endfor %}</div>
+    {% for note in parlay.notes %}<p class="note">! {{ note }}</p>{% endfor %}
+  </article>{% endfor %}
+  </div>{% else %}<div class="empty"><h3>Not enough eligible legs.</h3><p>Refresh the slate, choose another date, or lower the minimum leg probability.</p><a class="button primary" href="{{ url_for('slate',date=day.isoformat(),sport=sport.code) }}">Open the slate</a></div>{% endif %}
+</section>
+{% endblock %}

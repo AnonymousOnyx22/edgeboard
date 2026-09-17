@@ -1,0 +1,17 @@
+Episode {{ ep.number }} — Recap: {{ ctx.date }}
+
+Straight up, no spin. Here's how I did:
+
+{% for r in ctx.results %}
+{{ '✅' if r.result=='W' else ('❌' if r.result=='L' else '➖') }} {{ r.label }} — {{ r.result }}
+{% endfor %}
+
+{% if ctx.pld %}{{ ctx.pld }} pushes, so they cancel out.{% endif %}
+
+Where I missed: {{ ctx.missed }}
+
+Season: {{ record.wins }}-{{ record.losses }}-{{ record.pushes }} · {{ record.units }}u
+
+I grade everything in public. Follow along.
+
+{{ disclaimer }}

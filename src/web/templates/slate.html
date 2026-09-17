@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Edgeboard · Slate{% endblock %}
+{% block content %}
+<div class="eyebrow">01 · Scan the board</div>
+<h1>{{ sport.name }} slate,<br><em>without the noise.</em></h1>
+<p class="lede">Every matchup, current price, model probability, and qualifying edge in one view.</p>
+
+<div class="filters">
+  <form method="get" class="filters" style="display:contents">
+    <div class="field"><label>Date</label><input type="date" name="date" value="{{ day.isoformat() }}"></div>
+    <div class="field"><label>Sport</label><select name="sport">{% for item in sports %}<option value="{{ item.code }}" {{ 'selected' if item.code == sport.code }}>{{ item.name }}</option>{% endfor %}</select></div>
+    <button class="button" type="submit">View slate</button>
+  </form>
+  <form method="post" action="{{ url_for('sync') }}" data-loading style="margin-left:auto">
+    <input type="hidden" name="date" value="{{ day.isoformat() }}"><input type="hidden" name="sport" value="{{ sport.code }}">
+    <button class="button primary" type="submit">Refresh data + model</button>
+  </form>
+</div>
+
+<div class="metric-grid">
+  <div class="metric"><small>Games</small><strong>{{ cards|length }}</strong></div>
+  <div class="metric"><small>Qualified edges</small><strong>{{ cards|map(attribute='candidates')|map('length')|sum }}</strong></div>
+  <div class="metric"><small>Sport</small><strong>{{ sport.name }}</strong></div>
+  <div class="metric"><small>Date</small><strong style="font-size:18px">{{ day.strftime('%b %d') }}</strong></div>
+</div>
+
+{% if cards %}<div class="games">
+{% for card in cards %}<article class="game-card">
+  <div class="game-head"><span class="sport-dot">{{ sport.name }}</span><span class="game-matchup">{{ card.away }} <span style="color:#5d5a55">@</span> {{ card.home }}</span><span class="game-time">{{ card.kickoff_local() }} · {{ card.status|replace('_',' ') }}</span></div>
+  {% if card.candidates %}<div class="candidate-grid">
+    {% for pick in card.candidates %}<div class="candidate">
+      <div class="candidate-top"><span class="pick-name">{{ pick.headline }}</span><span class="price">{{ '%+d'|format(pick.odds) }}</span></div>
+      <div class="candidate-stats"><span><small>Model</small><b>{{ '%.1f%%'|format(pick.model_prob*100) }}</b></span><span><small>Edge</small><b style="color:var(--orange-2)">{{ '%+.1f%%'|format(pick.edge*100) }}</b></span><span><small>Confidence</small><b>{{ pick.confidence.score }}/10</b></span></div>
+      <div class="progress"><b style="width:{{ pick.confidence.score*10 }}%"></b></div>
+      {% if pick.h2h_note %}<p class="note">{{ pick.h2h_note }}</p>{% endif %}
+    </div>{% endfor %}
+  </div>{% else %}<div style="padding:18px 20px;color:#716e68;font-size:12px">{{ 'Game already started — pregame model closed.' if card.started else 'No line cleared the configured edge threshold.' }}</div>{% endif %}
+</article>{% endfor %}
+</div>{% else %}<div class="empty"><h3>No games in the local database.</h3><p>Use “Refresh data + model” to sync this slate.</p></div>{% endif %}
+
+{% if tracked %}<section class="section"><div class="section-head"><div><div class="eyebrow">Saved board</div><h2>Your tracked picks.</h2></div></div>
+<div class="table-wrap"><table class="data-table"><thead><tr><th>Pick</th><th>Matchup</th><th>Model</th><th>Edge</th><th>Status</th><th>Action</th></tr></thead><tbody>
+{% for pick in tracked %}<tr><td><b>{{ pick.team }} {{ pick.market|upper }}{% if pick.line is not none %} {{ '%+g'|format(pick.line) }}{% endif %}</b> · {{ '%+d'|format(pick.odds_american) }}</td><td>{{ pick.away }} @ {{ pick.home }}</td><td>{{ '%.1f%%'|format((pick.model_prob or 0)*100) }}</td><td>{{ '%+.1f%%'|format((pick.edge or 0)*100) }}</td><td><span class="pill {{ 'green' if pick.status in ['approved','edited'] else 'orange' }}">{{ pick.status }}</span></td><td>{% if pick.status == 'suggested' %}<div style="display:flex;gap:6px"><form method="post" action="{{ url_for('pick_action',pick_id=pick.id,action='approve') }}"><button class="button primary">Track</button></form><form method="post" action="{{ url_for('pick_action',pick_id=pick.id,action='reject') }}"><button class="button">Pass</button></form></div>{% else %}On card{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></section>{% endif %}
+{% endblock %}

@@ -1,0 +1,13 @@
+Episode {{ ep.number }} — {{ ctx.slate_label }}
+
+I like a few spots today and I'm sizing them by confidence:
+
+{% for p in ctx.plays %}
+• {{ p.team }} {{ p.market|upper }}{% if p.line %} {{ '%+.1f'|format(p.line) }}{% endif %} @ {{ p.odds }} — {{ p.conf }} confidence{% if p.reason %}. {{ p.reason }}{% endif %}
+{% endfor %}
+
+My record this season: {{ record.wins }}-{{ record.losses }}-{{ record.pushes }} ({{ record.units }}u)
+
+More picks every day. Follow so you don't miss them 🏈
+
+{{ disclaimer }}
