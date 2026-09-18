@@ -41,6 +41,7 @@ CORE_HOST = "https://sports.core.api.espn.com/v2/sports"
 # Gamelogs for finished games never change; current-season logs do.
 FINISHED_TTL = 30 * 24 * 3600
 LIVE_TTL = 20 * 60
+REQUEST_TIMEOUT = (5, 12)
 
 # Stats ESPN does not report directly, built from ones it does. Every combined
 # market the books offer needs one of these, or the model has nothing to
@@ -131,7 +132,7 @@ class EspnStats:
             except json.JSONDecodeError:
                 pass  # corrupt cache entry - refetch below
         query = {"lang": "en", "region": "us", **(params or {})}
-        resp = self.session.get(url, params=query, timeout=30)
+        resp = self.session.get(url, params=query, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
         if path:
@@ -209,7 +210,7 @@ class EspnStats:
 
     # -------------------------------------------------------------- roster
     def roster(self, team_espn_id: str | int, season: int | None = None,
-               skill_only: bool = True) -> list[dict]:
+               skill_only: bool = True, limit: int | None = None) -> list[dict]:
         """Active athletes for a team: [{id, name, position, jersey}]."""
         season = season or dt.date.today().year
         listing = self._get(f"{self.core_base}/seasons/{season}/teams/{team_espn_id}/athletes",
@@ -233,6 +234,8 @@ class EspnStats:
                 "position": position,
                 "jersey": athlete.get("jersey"),
             })
+            if limit is not None and len(out) >= limit:
+                break
         return out
 
     # ------------------------------------------------------------ injuries

@@ -233,6 +233,7 @@ class EspnClient:
             game_date = (dt.datetime.fromisoformat(start_utc.replace("Z", "+00:00"))
                          .astimezone(ET).date().isoformat())
             window = self.nfl_kickoff_window(start_utc) if sport == "nfl" else None
+            venue, venue_city = self.venue(comp)
 
             cur = db.connect(db_path)
             row = cur.execute("SELECT id FROM games WHERE external_id=?", (ev.get("id"),)).fetchone()
@@ -240,20 +241,38 @@ class EspnClient:
             if row:
                 cur.execute(
                     """UPDATE games SET away_team=?, home_team=?, start_utc=?, game_date=?, slate=?,
-                       status=?, away_score=?, home_score=? WHERE id=?""",
+                       status=?, away_score=?, home_score=?,
+                       venue=COALESCE(?, venue), venue_city=COALESCE(?, venue_city)
+                       WHERE id=?""",
                     (away_id, home_id, start_utc, game_date, window, state,
-                     away_score, home_score, row["id"]))
+                     away_score, home_score, venue, venue_city, row["id"]))
             else:
                 cur.execute(
                     """INSERT INTO games (sport_id, external_id, away_team, home_team,
-                       start_utc, game_date, slate, status, away_score, home_score)
-                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                       start_utc, game_date, slate, status, away_score, home_score,
+                       venue, venue_city)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (sport_id, ev.get("id"), away_id, home_id, start_utc, game_date, window,
-                     state, away_score, home_score))
+                     state, away_score, home_score, venue, venue_city))
             cur.commit()
             cur.close()
             n += 1
         return n
+
+    @staticmethod
+    def venue(comp: dict) -> tuple[str | None, str | None]:
+        """(stadium, "City, State") for one competition, or (None, None).
+
+        ESPN sends the venue as a linked resource, so a payload that was
+        fetched without it expanded carries only a $ref. Both parts are
+        optional and the caller keeps whatever it already had.
+        """
+        venue = comp.get("venue") or {}
+        name = venue.get("fullName") or None
+        address = venue.get("address") or {}
+        parts = [address.get("city"), address.get("state")]
+        city = ", ".join(part for part in parts if part) or None
+        return name, city
 
     def _upsert_team(self, db_path, sport_id: int, info: dict) -> int:
         cur = db.connect(db_path)

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% import "_media.html" as media with context %}
+{% block title %}Edgeboard · {{ view.name }}{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('teams_index', sport=sport.code) }}">← Back to teams</a>
+
+<div class="player-header card">
+  {{ media.crest(view.abbrev, sport.code, 'lg') }}
+  <div>
+    <div class="eyebrow">{{ sport.name }}</div>
+    <h1>{{ view.name }}</h1>
+    <p class="muted">
+      {% if view.card %}
+      {{ 'vs' if view.at_home else '@' }} {{ view.opponent }} · {{ view.card.kickoff_local() }}
+      {% else %}No scheduled game in the next two weeks{% endif %}
+    </p>
+  </div>
+</div>
+
+{% if view.note %}<p class="note">{{ view.note }}</p>{% endif %}
+
+{% if view.card %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Game lines</div>
+      <h2>Best bets on {{ view.card.matchup }}</h2>
+      <p>Game-level lines the model rates above the edge threshold.</p>
+    </div>
+  </div>
+  {% if view.picks %}
+  <div class="bet-grid">
+    {% for c in view.picks %}
+    <article class="bet card">
+      <div class="bet-head">
+        <h3>{{ c.headline }}</h3>
+        <span class="prob">{{ '%.0f%%'|format(c.model_prob * 100) }}</span>
+      </div>
+      <dl class="bet-meta">
+        <div><dt>Price</dt><dd>{{ '%+d'|format(c.odds) }}</dd></div>
+        <div><dt>Edge</dt><dd class="{{ 'positive' if c.edge >= 0 else 'negative' }}">{{ '%+.1f%%'|format(c.edge * 100) }}</dd></div>
+        <div><dt>Market</dt><dd>{{ c.market }}</dd></div>
+        {% if c.h2h_note %}<div><dt>H2H</dt><dd class="mono">{{ c.h2h_note }}</dd></div>{% endif %}
+      </dl>
+      {% if c.warnings %}<p class="note warn">⚠ {{ c.warnings|join(' ') }}</p>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}<div class="empty"><h3>No qualifying pick on this game.</h3><p>Refresh odds on the games page to recheck.</p></div>{% endif %}
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Depth chart</div>
+      <h2>{{ view.name }} players, best bet first</h2>
+      <p>Ranked by the probability of their best property clearing, top to bottom.</p>
+    </div>
+  </div>
+
+  {% if view.players %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Player</th><th>Position</th><th>Best bet</th><th>Hit chance</th><th>Price / edge</th><th>Form</th>
+      </tr></thead>
+      <tbody>
+      {% for p in view.players %}
+        {% set bet = p.best %}
+        <tr>
+          <td>
+            <a href="{{ url_for('player_detail', sport=sport.code, athlete_id=p.athlete_id, team=p.team) }}" class="player-link">
+              {{ media.headshot(p.athlete_id, p.name, sport.code) }}<b>{{ p.name }}</b>
+            </a>
+            {% if p.injury_status %}<span class="pill red" style="margin-left:6px">{{ p.injury_status }}</span>{% endif %}
+          </td>
+          <td><span class="pos">{{ p.position }}</span></td>
+          {% if bet %}
+            <td><b>{{ bet.headline }}</b></td>
+            <td><b>{{ '%.0f%%'|format(bet.probability * 100) }}</b></td>
+            <td>
+              {% if bet.odds is not none %}{{ '%+d'|format(bet.odds) }} <span class="{{ 'positive' if (bet.edge or 0) >= 0 else 'negative' }}">({{ '%+.1f%%'|format((bet.edge or 0) * 100) }})</span>{% else %}<span class="pos">no price</span>{% endif %}
+            </td>
+            <td class="mono">{{ p.recent_form(bet.stat_key, 5) }}</td>
+          {% else %}
+            <td colspan="4" class="note" style="margin:0">No bet cleared the probability floor</td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty"><h3>No players to rank yet.</h3><p>The roster has not loaded, or nobody has played yet this season.</p></div>{% endif %}
+</section>
+{% endblock %}

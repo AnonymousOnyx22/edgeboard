@@ -75,6 +75,12 @@ class GameCard:
     start_utc: str
     kickoff_window: str      # NFL only: thursday, sunday_early, sunday_night...
     status: str
+    # The league-local calendar date. A game that starts after midnight UTC
+    # still belongs to the previous evening's card, so callers that group or
+    # cut off by day read this rather than slicing `start_utc`.
+    game_date: str = ""
+    venue: str = ""          # stadium or park
+    venue_city: str = ""     # "St. Petersburg, Florida"
     sport: str = "nfl"
     home_espn_id: str = ""
     away_espn_id: str = ""
@@ -114,6 +120,26 @@ class GameCard:
     def bettable(self) -> bool:
         return not self.started
 
+    def kickoff_day(self, tz="America/New_York") -> str:
+        """The weekday and date a ticket prints, e.g. "Thu, Sep 18"."""
+        moment = self._local(tz)
+        return f"{moment.strftime('%a')}, {moment.strftime('%b')} "                f"{moment.strftime('%d').lstrip('0')}" if moment else ""
+
+    def kickoff_time(self, tz="America/New_York") -> str:
+        """Just the clock, e.g. "7:05 pm ET"."""
+        moment = self._local(tz)
+        if not moment:
+            return ""
+        return f"{moment.strftime('%I').lstrip('0')}"                f"{moment.strftime(':%M %p').replace('AM', 'am').replace('PM', 'pm')} ET"
+
+    def _local(self, tz="America/New_York"):
+        from zoneinfo import ZoneInfo
+        try:
+            moment = dt.datetime.fromisoformat(self.start_utc.replace("Z", "+00:00"))
+            return moment.astimezone(ZoneInfo(tz))
+        except (ValueError, AttributeError):
+            return None
+
     def kickoff_local(self, tz="America/New_York") -> str:
         from zoneinfo import ZoneInfo
         try:
@@ -145,7 +171,8 @@ def games_on(day: dt.date, sport: str = "nfl", db_path=db.DEFAULT_DB) -> list[di
         SELECT g.id, ht.abbrev AS home, at.abbrev AS away,
                ht.name AS home_name, at.name AS away_name,
                ht.league_key AS home_espn_id, at.league_key AS away_espn_id,
-               g.slate, g.start_utc, g.status, g.home_score, g.away_score
+               g.slate, g.start_utc, g.game_date, g.status,
+               g.home_score, g.away_score, g.venue, g.venue_city
         FROM games g
         JOIN teams ht ON ht.id = g.home_team
         JOIN teams at ON at.id = g.away_team
@@ -189,6 +216,9 @@ def day_board(day: dt.date | None = None, sport: str = "nfl",
             game_id=row["id"], home=row["home"], away=row["away"],
             start_utc=row["start_utc"], kickoff_window=row["slate"] or "",
             status=row["status"], sport=sport,
+            game_date=str(row.get("game_date") or ""),
+            venue=str(row.get("venue") or ""),
+            venue_city=str(row.get("venue_city") or ""),
             home_espn_id=str(row["home_espn_id"] or ""),
             away_espn_id=str(row["away_espn_id"] or ""),
             home_name=str(row["home_name"] or ""),
@@ -611,16 +641,45 @@ def parlay_pool(cards: list[GameCard], props: list[props_mod.PropCandidate] | No
     return pool
 
 
+def card_for_game(sport: str, game_id: int, db_path=db.DEFAULT_DB,
+                  days: int = 21) -> GameCard | None:
+    """One fixture's card by id, priced and scored like any other.
+
+    Built through `day_board` for that game's own date so the card carries the
+    same prediction and candidates the slate view shows, rather than a second,
+    quietly different read of the same game.
+    """
+    rows = db.query(db_path, """
+        SELECT COALESCE(g.game_date, date(g.start_utc)) AS day
+        FROM games g
+        WHERE g.id=? AND g.sport_id=(SELECT id FROM sports WHERE code=?)""",
+        (game_id, sport))
+    if not rows or not rows[0]["day"]:
+        return None
+    try:
+        day = dt.date.fromisoformat(rows[0]["day"])
+    except ValueError:
+        return None
+    cards = day_board(day, sport, db_path=db_path, include_started=True)
+    return next((card for card in cards if card.game_id == game_id), None)
+
+
 def next_game_by_team(sport: str = "nfl", days: int = 14,
                       start: dt.date | None = None,
-                      db_path=db.DEFAULT_DB) -> list[dict]:
+                      db_path=db.DEFAULT_DB,
+                      cards: list[GameCard] | None = None) -> list[dict]:
     """Every club in the league with its next fixture and best available pick.
 
     A club with no scheduled game in the window is still listed, with `card`
     left as None, so the page shows the whole league rather than only the
     teams that happen to be playing soon.
+
+    `cards` lets a caller hand over a board it has already built. Reading and
+    pricing a slate is the expensive part, and a page that shows both the
+    fixtures and the league table would otherwise pay for it twice.
     """
-    cards = upcoming_board(sport, days=days, start=start, db_path=db_path)
+    if cards is None:
+        cards = upcoming_board(sport, days=days, start=start, db_path=db_path)
 
     first: dict[str, GameCard] = {}
     for card in cards:                      # already sorted by kickoff

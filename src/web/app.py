@@ -12,7 +12,7 @@ from flask import Flask, abort, flash, redirect, render_template, request, sessi
 
 from ..data import sports as sport_registry
 from ..db import database as db
-from ..picker import actions, board
+from ..picker import actions, board, players
 from ..picker.backtest import record_summary
 from ..picker.engine import Picker
 from ..picker.grader import grade_all
@@ -50,6 +50,7 @@ def create_app(db_path=None) -> Flask:
     @app.context_processor
     def shared_context():
         from ..data.odds_client import OddsClient
+        from ..picker import autopick as autopick_mod
         credits = OddsClient.credits()
         token = session.get("_csrf_token")
         if not token:
@@ -60,6 +61,12 @@ def create_app(db_path=None) -> Flask:
             "sports": [sport_registry.get(code) for code in sport_registry.enabled_codes()],
             "credits": credits,
             # Club crests and player headshots, resolved in the templates.
+            # Prop legs store their market as prop:<stat key>; templates use
+            # these to tell a player bet from a game line.
+            "is_prop": autopick_mod.is_prop_market,
+            "prop_stat": autopick_mod.stat_key_of,
+            "stat_label": lambda key, code: sport_registry.get(code)
+                .stat_labels.get(key, key or ""),
             "team_logo": sport_registry.team_logo,
             "player_headshot": sport_registry.player_headshot,
             "csrf_token": token,
@@ -86,13 +93,200 @@ def create_app(db_path=None) -> Flask:
         days = max(1, min(21, request.args.get("days", 7, type=int)))
         # Finished and in-progress games are dropped. Their prices are live and
         # there is nothing left to bet, so the page only looks forward.
-        cards = board.upcoming_board(sport, days=days, start=day, db_path=path)
-        teams = board.next_game_by_team(sport, days=max(days, 14), start=day,
-                                        db_path=path)
+        # The team strip needs a 14-day window. Build that board once and use
+        # the requested date slice for the game list instead of retraining Elo
+        # twice during one request.
+        span = max(days, 14)
+        all_cards = board.upcoming_board(sport, days=span, start=day, db_path=path)
+        cutoff = day + dt.timedelta(days=days)
+        cards = [card for card in all_cards
+                 if not card.game_date or dt.date.fromisoformat(card.game_date) < cutoff]
+        teams = board.next_game_by_team(sport, days=span, start=day,
+                                        db_path=path, cards=all_cards)
         tracked = _tracked_picks(path, None, sport=sport, open_only=True)
         return render_template("games.html", active="games", day=day, days=days,
                                sport=sport_registry.get(sport), cards=cards,
                                teams=teams, tracked=tracked)
+
+    @app.get("/tickets")
+    def tickets():
+        """Today's fixtures as cards: who, when, where, and what to bet.
+
+        The board and the player pages are both tables. This is the same slate
+        read the way a ticket reads - one card per game - for picking a game
+        first and a bet second.
+        """
+        path = app.config["DB_PATH"]
+        day = _date_arg(request.args.get("date"))
+        sport = _sport_arg(request.args.get("sport"))
+        days = max(1, min(7, request.args.get("days", 1, type=int)))
+        cutoff = day + dt.timedelta(days=days)
+        cards = [card for card in
+                 board.upcoming_board(sport, days=days, start=day, db_path=path)
+                 if not card.game_date
+                 or dt.date.fromisoformat(card.game_date) < cutoff]
+        return render_template("tickets.html", active="tickets", day=day,
+                               days=days, sport=sport_registry.get(sport),
+                               cards=cards)
+
+    @app.get("/game/<sport>/<int:game_id>")
+    def game_detail(sport, game_id):
+        """One fixture, opened from its ticket: the bets the model likes.
+
+        Game lines come from the board, which is already built. Player props
+        are only shown when they are already cached, because pricing them
+        costs Odds API credits and opening a ticket should never spend any.
+        """
+        if sport not in sport_registry.REGISTRY:
+            abort(404)
+        path = app.config["DB_PATH"]
+        card = board.card_for_game(sport, game_id, db_path=path)
+        if card is None:
+            abort(404)
+
+        props, props_note = [], ""
+        try:
+            deep = board.deep_matchup(card, fetch_prices=False, max_players=8)
+            props = [c for c in deep.props if c.trustworthy][:12]
+            props_note = deep.props_note
+        except Exception as exc:
+            props_note = f"Player props unavailable: {exc}"
+
+        return render_template("game.html", active="tickets", card=card,
+                               sport=sport_registry.get(sport), props=props,
+                               props_note=props_note)
+
+    @app.get("/players")
+    def players_page():
+        path = app.config["DB_PATH"]
+        sport = _sport_arg(request.args.get("sport"))
+        day = _date_arg(request.args.get("date"))
+        days = max(1, min(14, request.args.get("days", 7, type=int)))
+        options = players.team_options(sport, path)
+        option_by_code = {item["abbrev"].upper(): item for item in options}
+        raw_teams = request.args.get("teams") or request.args.get("team") or ""
+        selected_teams = []
+        for value in raw_teams.split(","):
+            code = value.strip().upper()
+            if code in option_by_code and code not in selected_teams:
+                selected_teams.append(code)
+
+        # Keep one league-wide board behind the unfiltered view. A selected
+        # team that was outside its game window gets a focused one-game build.
+        entry = players.CACHE.get(sport, days, day, None)
+        if not entry or not players.CACHE.is_fresh(entry):
+            entry = players.CACHE.start(sport, days, day, path, team=None,
+                                        max_games=players.DEFAULT_MAX_GAMES)
+        board_data = entry.get("board") if entry else None
+        player_rows = board_data.players if board_data is not None else None
+
+        team_groups = []
+        any_building = bool(entry and entry.get("status") == "building")
+        for code in selected_teams:
+            rows = board_data.by_team(code) if board_data is not None else []
+            team_entry = entry if rows else players.CACHE.get(sport, days, day, code)
+            if not rows and (not team_entry or not players.CACHE.is_fresh(team_entry)):
+                # A filter only ever shows this club's next fixture, so the
+                # focused build reads one game rather than the six the
+                # league-wide board takes. Each game is both rosters' game
+                # logs, so this is the difference between a filter that
+                # answers and one that sits there.
+                team_entry = players.CACHE.start(
+                    sport, days, day, path, team=code, max_games=1)
+            team_board = team_entry.get("board") if team_entry else None
+            if not rows and team_board is not None:
+                rows = team_board.by_team(code)
+            status = team_entry.get("status") if team_entry else "building"
+            any_building = any_building or status == "building"
+            team_groups.append({
+                "team": option_by_code[code], "players": rows,
+                "status": status,
+                "message": team_entry.get("message", "") if team_entry else "",
+            })
+
+        team_filters = []
+        for item in options:
+            code = item["abbrev"].upper()
+            next_teams = ([value for value in selected_teams if value != code]
+                          if code in selected_teams else selected_teams + [code])
+            team_filters.append({
+                **item, "selected": code in selected_teams,
+                "url": url_for("players_page", sport=sport, days=days,
+                               date=day.isoformat(), teams=",".join(next_teams)),
+            })
+        return render_template("players.html", active="players",
+                               sport=sport_registry.get(sport), day=day, days=days,
+                               entry=entry, board=board_data,
+                               player_rows=player_rows,
+                               options=options, team_filters=team_filters,
+                               selected_teams=selected_teams,
+                               team_groups=team_groups,
+                               any_building=any_building)
+
+    @app.post("/players/refresh")
+    def refresh_players():
+        path = app.config["DB_PATH"]
+        sport = _sport_arg(request.form.get("sport"))
+        day = _date_arg(request.form.get("date"))
+        days = max(1, min(14, request.form.get("days", 7, type=int)))
+        selected_teams = [value.strip().upper()
+                          for value in (request.form.get("teams") or "").split(",")
+                          if value.strip()]
+        fetch_prices = request.form.get("fetch_prices") == "on"
+        for team in selected_teams or [None]:
+            players.CACHE.start(sport, days, day, path, team=team,
+                                fetch_prices=fetch_prices, force=True)
+        flash("Rebuilding the player board. A cold cache can take a moment.", "info")
+        return redirect(url_for("players_page", sport=sport, days=days,
+                                date=day.isoformat(),
+                                teams=",".join(selected_teams)))
+
+    @app.get("/player/<sport>/<athlete_id>")
+    def player_detail(sport, athlete_id):
+        if sport not in sport_registry.REGISTRY:
+            abort(404)
+        path = app.config["DB_PATH"]
+        view = players.CACHE.find_player(sport, athlete_id)
+        if view is None:
+            team = (request.args.get("team") or "").strip()
+            if not team:
+                abort(404, description="Open this player from the players board.")
+            try:
+                view = players.build_player_view(sport, athlete_id, team, path)
+            except Exception as exc:
+                flash(f"Could not load that player: {exc}", "error")
+                return redirect(url_for("players_page", sport=sport))
+        if view is None:
+            abort(404, description="Player not found.")
+        return render_template("player.html", active="players",
+                               sport=sport_registry.get(sport), view=view)
+
+    @app.get("/teams")
+    def teams_index():
+        path = app.config["DB_PATH"]
+        sport = _sport_arg(request.args.get("sport"))
+        rows = board.next_game_by_team(sport, days=14, db_path=path)
+        return render_template("teams.html", active="teams",
+                               sport=sport_registry.get(sport), teams=rows)
+
+    @app.get("/teams/<sport>/<abbrev>")
+    def team_detail(sport, abbrev):
+        if sport not in sport_registry.REGISTRY:
+            abort(404)
+        path = app.config["DB_PATH"]
+        cached = players.CACHE.find_team(sport, abbrev)
+        try:
+            view = players.build_team_view(
+                sport, abbrev, days=7, db_path=path,
+                fetch_prices=(request.args.get("prices") == "1"),
+                players=cached)
+        except Exception as exc:
+            flash(f"Could not load that team: {exc}", "error")
+            return redirect(url_for("teams_index", sport=sport))
+        if view is None:
+            abort(404, description="Unknown team.")
+        return render_template("team.html", active="teams",
+                               sport=sport_registry.get(sport), view=view)
 
     @app.post("/sync")
     def sync():
@@ -120,26 +314,20 @@ def create_app(db_path=None) -> Flask:
         day = _date_arg(request.args.get("date"))
         sport = _sport_arg(request.args.get("sport"))
         days = max(1, min(14, request.args.get("days", 7, type=int)))
-        legs = max(2, min(6, request.args.get("legs", 3, type=int)))
-        rank = request.args.get("rank", "probability")
-        if rank not in {"probability", "value"}:
-            rank = "probability"
-        min_prob = max(0.01, min(0.99, request.args.get("min_prob", 0.55, type=float)))
-        cards = board.upcoming_board(sport, days=days, start=day, db_path=path)
-        pool = board.parlay_pool(cards, min_probability=min_prob)
-        parlays = optimize(pool, min_legs=legs, max_legs=legs,
-                           rank_by=rank, limit=8) if len(pool) >= legs else []
         summary = _model_summary(path)
+        # The model's straight read of the upcoming slate, strongest edge
+        # first. No parlays here - this is what the model likes on its own.
+        cards = board.upcoming_board(sport, days=days, start=day, db_path=path)
+        predictions = sorted(
+            ((card, candidate) for card in cards for candidate in card.candidates),
+            key=lambda pair: pair[1].edge, reverse=True)
         # Everything the model has committed by itself, newest first, so the
         # whole record is visible in one place rather than a day at a time.
         auto_picks = _tracked_picks(path, limit=100)
         return render_template("model_picks.html", active="model", day=day, days=days,
-                               sport=sport_registry.get(sport), legs=legs,
-                               rank=rank, min_prob=min_prob, pool=pool,
-                               parlays=parlays, summary=summary,
-                               auto_picks=auto_picks,
-                               auto_rules=_autopick_rules(),
-                               watched=_watched_parlays(path, sport))
+                               sport=sport_registry.get(sport),
+                               predictions=predictions[:60], summary=summary,
+                               auto_picks=auto_picks, auto_rules=_autopick_rules())
 
     @app.post("/model-picks/track")
     def track_model_parlay():
@@ -282,6 +470,7 @@ def _tracked_picks(path, day: str | None = None, sport: str | None = None,
                     COALESCE(p.confidence_final,p.confidence_model) AS confidence,
                     COALESCE(p.units_final,p.units_model) AS units,
                     l.market,l.team,l.line,l.odds_american,l.model_prob,l.implied_prob,
+                    l.athlete_id,l.player,l.reason,
                     g.game_date,g.start_utc,g.status AS game_status,
                     at.abbrev AS away,ht.abbrev AS home,
                     r.result,r.units_won,r.graded_utc

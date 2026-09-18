@@ -31,6 +31,19 @@ auto_pick:
   min_backing_rate: ~       # and optionally that the bet cashed this often
   max_per_day: 5            # per sport
   status: approved          # approved = counts toward the tracked record
+  # Player props go through the same gate as game lines. Only priced props are
+  # ever committed - an unpriced projection has no edge to measure, and a
+  # record built on the model marking its own homework is worth nothing.
+  props:
+    enabled: true
+    min_confidence: 6       # of 10
+    min_edge: 0.04          # model probability over the vig-free price
+    max_per_day: 3          # per sport, on top of the game-line cap
+    max_games: 4            # games to pull player data and prices for
+    max_players: 12         # per team
+    fetch_prices: true      # one Odds API credit per market per game
+    require_h2h: false      # true = only players who have faced this opponent
+    min_probability: 0.55
 
 # Runs with the local dashboard. Prices remain cache-aware, so the hourly
 # check does not waste Odds API credits when a fresh response already exists.

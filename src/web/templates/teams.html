@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% import "_media.html" as media with context %}
+{% block title %}Edgeboard · Teams{% endblock %}
+{% block content %}
+<div class="eyebrow">Clubs</div>
+<h1>Teams playing</h1>
+<p class="lede">Every club in the league with its next fixture, the model’s best line on that game, and a shortcut to that team’s best players, top to bottom.</p>
+
+<div class="seg-row" role="group" aria-label="Sport">
+  {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
+     href="{{ url_for('teams_index', sport=item.code) }}">{{ item.name }}</a>{% endfor %}
+</div>
+
+<section class="section">
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Team</th><th>Next game</th><th>Best line</th><th>Odds / edge</th><th>Players</th>
+      </tr></thead>
+      <tbody>
+      {% for team in teams %}
+        <tr>
+          <td>
+            <a href="{{ url_for('team_detail', sport=sport.code, abbrev=team.abbrev) }}" class="team-link">
+              {{ media.crest(team.abbrev, sport.code) }}<b>{{ team.name }}</b><span class="pos">{{ team.abbrev }}</span>
+            </a>
+          </td>
+          {% if team.card %}
+            <td>{{ 'vs' if team.at_home else '@' }} {{ team.opponent }}<br><span class="pos">{{ team.card.kickoff_local() }}</span></td>
+            {% if team.best %}
+              <td><b>{{ team.best.headline }}</b><br><span class="note" style="margin:0">{{ team.best.game }}</span></td>
+              <td>{{ '%+d'|format(team.best.odds) }}<br><span class="{{ 'positive' if team.best.edge >= 0 else 'negative' }}">{{ '%+.1f%%'|format(team.best.edge * 100) }}</span></td>
+            {% else %}<td class="note" style="margin:0" colspan="2">No qualifying pick</td>{% endif %}
+          {% else %}
+            <td colspan="3" class="note" style="margin:0">No scheduled game in the next two weeks</td>
+          {% endif %}
+          <td><a href="{{ url_for('team_detail', sport=sport.code, abbrev=team.abbrev) }}" class="button small">Open</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

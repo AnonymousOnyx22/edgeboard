@@ -43,7 +43,7 @@
 {% if recent %}<section class="section">
   <div class="section-head"><div><div class="eyebrow">Watchlist</div><h2>Latest positions</h2></div><a class="button ghost" href="{{ url_for('performance') }}">Full ledger</a></div>
   <div class="table-wrap"><table class="data-table"><thead><tr><th>Pick</th><th>Matchup</th><th>Price</th><th>Confidence</th><th>Status</th><th>Result</th></tr></thead><tbody>
-  {% for pick in recent %}<tr><td><b>{{ pick.team }} {{ pick.market|upper }}{% if pick.line is not none %} {{ '%+g'|format(pick.line) }}{% endif %}</b></td><td>{{ pick.away }} @ {{ pick.home }}</td><td>{{ '%+d'|format(pick.odds_american) }}</td><td>{{ pick.confidence|int if pick.confidence is not none else '' }}/10</td><td><span class="pill orange">{{ pick.status|replace('_',' ') }}</span></td><td>{{ pick.result or 'Open' }}</td></tr>{% endfor %}
+  {% for pick in recent %}<tr><td><b>{{ pick.team }} {{ pick.market|upper }}{% if pick.line is not none %} {{ '%+g'|format(pick.line) }}{% endif %}</b></td><td>{{ pick.away }} @ {{ pick.home }}</td><td>{{ '%+d'|format(pick.odds_american) }}</td><td>{{ pick.confidence|int if pick.confidence is not none else '' }}/10</td><td><span class="pill orange">{{ pick.status|replace('_',' ') }}</span></td><td>{% if pick.result %}<span class="result-mark {{ 'result-win' if pick.result=='W' else ('result-loss' if pick.result=='L' else 'result-push') }}">{{ '&plus; W'|safe if pick.result=='W' else ('&minus; L'|safe if pick.result=='L' else '= P') }}</span>{% else %}<span class="pos">Open</span>{% endif %}</td></tr>{% endfor %}
   </tbody></table></div>
 </section>{% endif %}
 {% endblock %}

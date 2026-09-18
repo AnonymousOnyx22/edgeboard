@@ -22,6 +22,31 @@ _started = False
 STATUS_PATH = db.ROOT / "data" / "automation_status.json"
 
 
+def _schedule_dates(sport: str, today: dt.date, days: int,
+                    db_path=db.DEFAULT_DB) -> list[dt.date]:
+    """Dates that need refreshing for picks plus the upcoming slate.
+
+    A forward-only refresh strands yesterday's picks with an ``in_progress``
+    game forever after midnight.  Revisit every past/current game date that
+    still has an ungraded pick so ESPN can supply the final score.
+    """
+    dates = {today + dt.timedelta(days=offset) for offset in range(days)}
+    rows = db.query(db_path, """
+        SELECT DISTINCT COALESCE(g.game_date, date(g.start_utc)) AS game_day
+        FROM picks p
+        JOIN pick_legs l ON l.pick_id=p.id
+        JOIN games g ON g.id=l.game_id
+        JOIN sports s ON s.id=g.sport_id
+        WHERE s.code=? AND p.status != 'graded'
+          AND g.status != 'final'
+          AND date(COALESCE(g.game_date, g.start_utc)) <= date(?)
+    """, (sport, today.isoformat()))
+    for row in rows:
+        if row["game_day"]:
+            dates.add(dt.date.fromisoformat(row["game_day"]))
+    return sorted(dates)
+
+
 def run_cycle(db_path=db.DEFAULT_DB, config: dict | None = None) -> dict:
     """Run one complete maintenance cycle; safe to call repeatedly."""
     cfg = config or db.get_config()
@@ -35,8 +60,8 @@ def run_cycle(db_path=db.DEFAULT_DB, config: dict | None = None) -> dict:
     try:
         for code in sport_registry.enabled_codes(cfg):
             picker = Picker(code, db_path=db_path)
-            games = sum(picker.sync_games(today + dt.timedelta(days=offset))
-                        for offset in range(days))
+            games = sum(picker.sync_games(day)
+                        for day in _schedule_dates(code, today, days, db_path))
             odds = picker.sync_odds(day=today)
             selected = autopick.run(code, days=days, start=today,
                                     db_path=db_path, config=cfg)

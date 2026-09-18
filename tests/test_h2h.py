@@ -131,3 +131,38 @@ def test_stat_keys_follow_the_sport():
     nfl = h2h.PlayerSample(athlete_id="2", name="Receiver", position="WR",
                            team="BUF", opponent="MIA")
     assert "receivingYards" in nfl.stat_keys()
+
+
+def test_player_series_bounds_roster_and_reports_history_progress():
+    class Sport:
+        code = "nfl"
+
+    class Stats:
+        sport = Sport()
+
+        def __init__(self):
+            self.roster_limit = None
+
+        def injured_ids(self, _team_id):
+            return {}
+
+        def roster(self, _team_id, limit=None):
+            self.roster_limit = limit
+            return [{"id": str(i), "name": f"Player {i}", "position": "WR"}
+                    for i in range(5)]
+
+        def game_rows(self, athlete_id, _seasons):
+            return [_game(event_id=athlete_id, receivingTargets=2,
+                          receivingYards=20)]
+
+    stats = Stats()
+    updates = []
+    samples = h2h.player_series(
+        "team", "BUF", "MIA", seasons=[2026], stats=stats,
+        max_players=2, progress=lambda fraction, message: updates.append(
+            (fraction, message)))
+
+    assert stats.roster_limit == 4
+    assert [sample.name for sample in samples] == ["Player 0", "Player 1"]
+    assert updates[-1][0] == 1.0
+    assert "BUF player histories" in updates[-1][1]

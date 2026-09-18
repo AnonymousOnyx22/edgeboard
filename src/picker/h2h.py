@@ -14,6 +14,7 @@ filled in from season averages.
 from __future__ import annotations
 
 import datetime as dt
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -252,7 +253,8 @@ class PlayerSample:
 def player_series(team_espn_id: str | int, team_abbrev: str, opponent_abbrev: str,
                   seasons: list[int] | None = None, stats: EspnStats | None = None,
                   recent_games: int = 10, max_players: int = 14,
-                  include_injured: bool = False, sport: str = "nfl") -> list[PlayerSample]:
+                  include_injured: bool = False, sport: str = "nfl",
+                  progress=None) -> list[PlayerSample]:
     """Every skill player on a team, with their games against this opponent.
 
     Players are returned in roster order; those with no recorded games at all
@@ -264,18 +266,27 @@ def player_series(team_espn_id: str | int, team_abbrev: str, opponent_abbrev: st
     opponent = to_espn(opponent_abbrev)
     injuries = client.injured_ids(team_espn_id)
 
-    samples: list[PlayerSample] = []
-    for player in client.roster(team_espn_id):
+    # ESPN's roster is a list of athlete references. Resolving the entire
+    # roster and then pulling three seasons serially made the player page look
+    # frozen for minutes. Keep a modest reserve for injured/inactive players,
+    # then load the independent histories concurrently.
+    roster = client.roster(team_espn_id, limit=max_players * 2)
+    eligible = []
+    for player in roster:
         if not sport_registry.get(sport).stats_for(player["position"]):
             continue
         status = injuries.get(player["id"], "")
         if status and not include_injured and status.lower() in ("out", "injured reserve"):
             continue
+        eligible.append((player, status))
+
+    def load(item):
+        player, status = item
         rows = [r for r in client.game_rows(player["id"], seasons)
                 if did_play(r, player["position"], sport)]
         if not rows:
-            continue
-        samples.append(PlayerSample(
+            return None
+        return PlayerSample(
             athlete_id=player["id"],
             name=player["name"],
             position=player["position"],
@@ -285,10 +296,29 @@ def player_series(team_espn_id: str | int, team_abbrev: str, opponent_abbrev: st
             recent_games=rows[:recent_games],
             injury_status=status,
             sport=sport,
-        ))
-        if len(samples) >= max_players:
-            break
-    return samples
+        )
+
+    if not eligible:
+        return []
+    ordered: list[PlayerSample | None] = [None] * len(eligible)
+    workers = min(6, len(eligible))
+    with ThreadPoolExecutor(max_workers=workers,
+                            thread_name_prefix=f"{sport}-player") as pool:
+        pending = {pool.submit(load, item): index
+                   for index, item in enumerate(eligible)}
+        completed = 0
+        for future in as_completed(pending):
+            index = pending[future]
+            try:
+                ordered[index] = future.result()
+            except Exception:
+                # One unavailable athlete feed must not discard both rosters.
+                ordered[index] = None
+            completed += 1
+            if progress:
+                progress(completed / len(eligible),
+                         f"Loaded {completed}/{len(eligible)} {team_abbrev} player histories...")
+    return [sample for sample in ordered if sample is not None][:max_players]
 
 
 def default_seasons(back: int = 3) -> list[int]:

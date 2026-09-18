@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% import "_media.html" as media with context %}
+{% block head %}{% if any_building %}<meta http-equiv="refresh" content="6">{% endif %}{% endblock %}
+{% block title %}Edgeboard · Players{% endblock %}
+{% block content %}
+<div class="eyebrow">Individual reads</div>
+<h1>Players most likely to cash</h1>
+<p class="lede">Every skill player on the upcoming games with a model line, ranked by hit probability. Click a player for their best bets and game log.</p>
+
+<div class="seg-row" role="group" aria-label="Sport">
+  {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
+     href="{{ url_for('players_page', sport=item.code) }}">{{ item.name }}</a>{% endfor %}
+</div>
+
+<nav class="team-filter" aria-label="Filter players by team">
+  <a class="team-filter-chip {{ 'active' if not selected_teams }}"
+     href="{{ url_for('players_page', sport=sport.code, days=days, date=day.isoformat()) }}">All teams</a>
+  {% for item in team_filters %}
+    <a class="team-filter-chip {{ 'active' if item.selected }}" href="{{ item.url }}"
+       aria-pressed="{{ 'true' if item.selected else 'false' }}" title="{{ item.name }}">
+      {{ media.crest(item.abbrev, sport.code, 'sm') }}<span>{{ item.abbrev }}</span>
+    </a>
+  {% endfor %}
+</nav>
+
+<div class="player-actions">
+  <span class="note">{{ selected_teams|length ~ ' selected' if selected_teams else 'Showing the full board' }}</span>
+  <form method="post" action="{{ url_for('refresh_players') }}" data-loading style="margin-left:auto">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="sport" value="{{ sport.code }}">
+    <input type="hidden" name="days" value="{{ days }}">
+    <input type="hidden" name="teams" value="{{ selected_teams|join(',') }}">
+    <label class="check-inline"><input type="checkbox" name="fetch_prices" value="on"> Fetch prices</label>
+    <button class="button primary" type="submit">Refresh</button>
+  </form>
+</div>
+
+{% if selected_teams %}
+  <div class="team-player-stack">
+  {% for group in team_groups %}
+    <section class="team-player-panel">
+      <header>
+        <div class="team-player-identity">
+          {{ media.crest(group.team.abbrev, sport.code) }}
+          <div><h2>{{ group.team.name }}</h2><span>{{ group.team.abbrev }} · {{ group.players|length }} players</span></div>
+        </div>
+      </header>
+      {% if group.status == 'building' %}
+        <div class="team-panel-state"><b>Loading {{ group.team.abbrev }} players…</b><span>{{ group.message or 'Reading roster and recent games.' }}</span></div>
+      {% elif group.status == 'error' %}
+        <div class="team-panel-state"><b>Could not load this team.</b><span>{{ group.message }}</span></div>
+      {% elif group.players %}
+        <div class="team-roster">
+        {% for p in group.players %}
+          {% set bet = p.best %}
+          <div class="team-roster-row">
+            <a href="{{ url_for('player_detail', sport=sport.code, athlete_id=p.athlete_id, team=p.team) }}" class="player-link roster-player">
+              {{ media.headshot(p.athlete_id, p.name, sport.code) }}
+              <span><b>{{ p.name }}</b><small>{{ p.position }} · {{ 'vs' if p.at_home else '@' }} {{ p.opponent }}</small></span>
+            </a>
+            {% if bet %}
+              <div class="roster-market"><b>{{ bet.headline }}</b><span>{{ p.recent_form(bet.stat_key, 5) }}</span></div>
+              <div class="roster-chance"><b>{{ '%.0f%%'|format(bet.probability * 100) }}</b><span>{% if bet.odds is not none %}{{ '%+d'|format(bet.odds) }}{% else %}model{% endif %}</span></div>
+            {% else %}
+              <div class="roster-market muted">No market cleared 55%</div><div></div>
+            {% endif %}
+          </div>
+        {% endfor %}
+        </div>
+      {% else %}
+        <div class="team-panel-state"><b>No player markets available.</b><span>Refresh this team or widen the game window.</span></div>
+      {% endif %}
+    </section>
+  {% endfor %}
+  </div>
+
+{% elif entry and entry.status == 'building' %}
+  <div class="empty">
+    <h3>Building the player board…</h3>
+    <p>{{ entry.message or 'Pulling rosters and game logs from ESPN. A cold cache takes a moment; this page reloads when it is done.' }}</p>
+    <div class="progress wide"><b style="width:{{ (entry.progress or 0) * 100 }}%"></b></div>
+  </div>
+
+{% elif entry and entry.status == 'error' %}
+  <div class="empty">
+    <h3>The player board could not be built.</h3>
+    <p>{{ entry.message }}</p>
+    <form method="post" action="{{ url_for('refresh_players') }}" data-loading style="margin-top:16px">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="sport" value="{{ sport.code }}">
+      <input type="hidden" name="days" value="{{ days }}">
+      <input type="hidden" name="team" value="{{ team or '' }}">
+      <button class="button primary" type="submit">Try again</button>
+    </form>
+  </div>
+
+{% elif not board %}
+  <div class="empty">
+    <h3>Nothing to build from yet.</h3>
+    <p>No upcoming games are in the local database. Sync the fixtures on <a href="{{ url_for('games', sport=sport.code) }}" style="text-decoration:underline">Today’s games</a> first.</p>
+  </div>
+
+{% else %}
+  <div class="metric-grid">
+    <div class="metric"><small>Players in these games</small><strong>{{ player_rows|length }}</strong></div>
+    <div class="metric"><small>Games read</small><strong>{{ board.games_scanned }}<span style="font-size:13px;color:var(--muted)">/{{ board.games_total }}</span></strong></div>
+    <div class="metric"><small>Pricing</small><strong style="font-size:16px">{{ 'priced' if board.priced else 'model-only' }}</strong></div>
+    <div class="metric"><small>Window</small><strong>{{ days }}d</strong></div>
+  </div>
+
+  {% if board.note %}<p class="note">{{ board.note }}</p>{% endif %}
+
+  <section class="section">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">{{ sport.name }} · {{ board.start }}</div>
+        <h2>Top of the board</h2>
+        <p>One row per player, best model bet first. Probabilities are the model’s view, blended toward the market when a price exists.</p>
+      </div>
+    </div>
+
+    {% if player_rows %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th>Player</th><th>Team</th><th>Opponent</th><th>Game</th>
+          <th>Best bet</th><th>Hit chance</th><th>Price / edge</th><th>Last 5 vs opponent</th>
+        </tr></thead>
+        <tbody>
+        {% for p in player_rows %}
+          {% set bet = p.best %}
+          <tr>
+            <td>
+              <a href="{{ url_for('player_detail', sport=sport.code, athlete_id=p.athlete_id, team=p.team) }}" class="player-link">
+                {{ media.headshot(p.athlete_id, p.name, sport.code) }}<b>{{ p.name }}</b><span class="pos">{{ p.position }}</span>
+              </a>
+              {% if p.injury_status %}<span class="pill red" style="margin-left:6px">{{ p.injury_status }}</span>{% endif %}
+            </td>
+            <td><a href="{{ url_for('team_detail', sport=sport.code, abbrev=p.team) }}" class="team-link">{{ media.crest(p.team, sport.code, 'sm') }} {{ p.team }}</a></td>
+            <td>{{ 'vs' if p.at_home else '@' }} {{ p.opponent }}</td>
+            <td>{{ p.kickoff }}</td>
+            {% if bet %}
+              <td><b>{{ bet.headline }}</b></td>
+              <td><b>{{ '%.0f%%'|format(bet.probability * 100) }}</b></td>
+              <td>
+                {% if bet.odds is not none %}{{ '%+d'|format(bet.odds) }} <span class="{{ 'positive' if (bet.edge or 0) >= 0 else 'negative' }}">({{ '%+.1f%%'|format((bet.edge or 0) * 100) }})</span>{% else %}<span class="pos">no price</span>{% endif %}
+              </td>
+              {# The head-to-head read: this stat against the club they are
+                 about to play. Never silently falls back to overall form -
+                 a first meeting is a fact worth showing. #}
+              <td class="mono">
+                {% set vs = p.h2h_form(bet.stat_key, 5) %}
+                {% if vs %}{{ vs }}
+                {% else %}<span class="pos" title="No prior meeting in the sample">first meeting</span>{% endif %}
+              </td>
+            {% else %}
+              <td colspan="4" class="note" style="margin:0">No bet cleared {{ 55 }}% probability</td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<div class="empty"><h3>No players found.</h3><p>Build the board or pick another team.</p></div>{% endif %}
+  </section>
+{% endif %}
+{% endblock %}

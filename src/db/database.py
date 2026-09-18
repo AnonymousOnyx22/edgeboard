@@ -38,6 +38,15 @@ def init_db(db_path: str | Path = DEFAULT_DB) -> None:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(games)")}
     if "game_date" not in columns:
         conn.execute("ALTER TABLE games ADD COLUMN game_date TEXT")
+    # Player props name an athlete; game lines leave both columns NULL.
+    leg_columns = {row[1] for row in conn.execute("PRAGMA table_info(pick_legs)")}
+    for column in ("athlete_id", "player"):
+        if column not in leg_columns:
+            conn.execute(f"ALTER TABLE pick_legs ADD COLUMN {column} TEXT")
+    # Where the game is played, for the fixture cards.
+    for column in ("venue", "venue_city"):
+        if column not in columns:
+            conn.execute(f"ALTER TABLE games ADD COLUMN {column} TEXT")
     # Repair rows written by the original ESPN adapter. It stored raw states
     # and assumed competitor order 0/1 meant away/home (ESPN uses home/away).
     conn.execute("""UPDATE games SET away_score=home_score, home_score=away_score

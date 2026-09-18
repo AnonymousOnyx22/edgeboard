@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% import "_media.html" as media with context %}
+
+{% block content %}
+<h1>Today’s games</h1>
+<p class="lede">One card per fixture: who is playing, when, and where. Open a card for the bets the model likes on that game.</p>
+
+<div class="seg-group" role="tablist" aria-label="Sport">
+  {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
+     href="{{ url_for('tickets', sport=item.code, days=days) }}">{{ item.name }}</a>{% endfor %}
+</div>
+
+{% if cards %}
+<div class="ticket-grid">
+  {% for card in cards %}
+    <a class="ticket {{ 'is-started' if card.started }}"
+       href="{{ url_for('game_detail', sport=sport.code, game_id=card.game_id) }}">
+
+      <div class="ticket-stub">
+        <span class="ticket-day">{{ card.kickoff_day() }}</span>
+        <span class="ticket-time">{{ card.kickoff_time() }}</span>
+        {% if card.started %}<span class="ticket-live">{{ 'Final' if card.status == 'final' else 'Live' }}</span>{% endif %}
+      </div>
+
+      <div class="ticket-body">
+        <div class="ticket-side">
+          {{ media.crest(card.away, sport.code) }}
+          <span class="ticket-team">{{ card.away }}</span>
+          <span class="ticket-role">away</span>
+        </div>
+
+        <span class="ticket-at">@</span>
+
+        <div class="ticket-side">
+          {{ media.crest(card.home, sport.code) }}
+          <span class="ticket-team">{{ card.home }}</span>
+          <span class="ticket-role">home</span>
+        </div>
+      </div>
+
+      <div class="ticket-foot">
+        {% if card.venue %}
+          <span class="ticket-venue">{{ card.venue }}</span>
+          {% if card.venue_city %}<span class="ticket-city">{{ card.venue_city }}</span>{% endif %}
+        {% else %}
+          <span class="ticket-venue pos">Venue to be confirmed</span>
+        {% endif %}
+
+        {% set best = card.best %}
+        {% if best %}
+          <span class="ticket-best">
+            <b>{{ best.headline }}</b>
+            <span class="{{ 'positive' if best.edge >= 0 else 'negative' }}">{{ '%+.1f%%'|format(best.edge * 100) }}</span>
+          </span>
+        {% else %}
+          <span class="ticket-best pos">No edge on the board</span>
+        {% endif %}
+      </div>
+    </a>
+  {% endfor %}
+</div>
+{% else %}
+  <div class="empty">
+    <h3>No {{ sport.name }} games on {{ day }}.</h3>
+    <p>Sync the fixtures on <a href="{{ url_for('games', sport=sport.code) }}" style="text-decoration:underline">Today’s games</a>, or pick another sport.</p>
+  </div>
+{% endif %}
+{% endblock %}

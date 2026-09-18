@@ -44,6 +44,41 @@ def grade_straight(market: str, team: str, line: float | None,
     raise ValueError(f"unsupported market: {market}")
 
 
+def grade_prop(side: str, line: float | None, actual: float | None) -> str:
+    """W / L / P for one player prop, given what the player actually did.
+
+    `side` is Over/Under and `line` is the book's number. Lines are usually
+    x.5 and cannot push, but whole-number lines (a hit, a goal) push often
+    enough that the exact-match case is handled rather than rounded away.
+    """
+    if actual is None:
+        raise ValueError("no stat line recorded for this player")
+    if line is None:
+        raise ValueError("prop leg has no line to grade against")
+    actual, line = float(actual), float(line)
+    o = (side or "").strip().lower()
+    if o == "over":
+        return "W" if actual > line else ("L" if actual < line else "P")
+    if o == "under":
+        return "W" if actual < line else ("L" if actual > line else "P")
+    raise ValueError(f"unknown prop side: {side}")
+
+
+def prop_actual(athlete_id: str, stat_key: str, event_id: str,
+                sport: str = "nfl", stats=None) -> float | None:
+    """What the player actually recorded in that game, or None if unreported.
+
+    ESPN's gamelog is the same feed the projection was built from, so a prop
+    is graded against the numbers that produced it.
+    """
+    from ..data.espn_stats import EspnStats
+    client = stats or EspnStats(sport)
+    for row in client.game_rows(athlete_id):
+        if str(row.get("event_id")) == str(event_id):
+            return row.get(stat_key)
+    return None
+
+
 def units_won(result: str, units: float, payout_mult: float) -> float:
     """Profit (stake returned on push). W -> units*payout_mult, L -> -units, P -> 0."""
     if result == "W":
@@ -53,7 +88,30 @@ def units_won(result: str, units: float, payout_mult: float) -> float:
     return 0.0
 
 
-def grade_pick(pick_id: int, db_path=db.DEFAULT_DB) -> dict:
+def _grade_leg(leg, game, away_abbrev: str, home_abbrev: str,
+               db_path=db.DEFAULT_DB, stats=None) -> str:
+    """Grade one leg, whichever kind it is."""
+    from .autopick import is_prop_market, stat_key_of
+
+    if not is_prop_market(leg["market"]):
+        return grade_straight(leg["market"], leg["team"], leg["line"],
+                              game["away_score"], game["home_score"],
+                              away_abbrev, home_abbrev)
+
+    athlete_id = leg["athlete_id"]
+    if not athlete_id:
+        raise ValueError(f"prop leg {leg['id']} has no athlete to grade")
+    if not game["external_id"]:
+        raise ValueError(f"game {game['id']} has no ESPN event id")
+    sport_rows = db.query(db_path,
+                          "SELECT code FROM sports WHERE id=?", (game["sport_id"],))
+    sport = sport_rows[0]["code"] if sport_rows else "nfl"
+    actual = prop_actual(athlete_id, stat_key_of(leg["market"]),
+                         game["external_id"], sport, stats)
+    return grade_prop(leg["team"], leg["line"], actual)
+
+
+def grade_pick(pick_id: int, db_path=db.DEFAULT_DB, stats=None) -> dict:
     """Grade a pick from the database using stored leg lines + final scores.
     Returns {'result': W/L/P, 'units_won': float} and persists it."""
     pick = db.query(db_path, "SELECT * FROM picks WHERE id=?", (pick_id,))
@@ -81,8 +139,7 @@ def grade_pick(pick_id: int, db_path=db.DEFAULT_DB) -> dict:
         g = games[int(leg["game_id"])]
         away = db.query(db_path, "SELECT abbrev FROM teams WHERE id=?", (g["away_team"],))[0]["abbrev"]
         home = db.query(db_path, "SELECT abbrev FROM teams WHERE id=?", (g["home_team"],))[0]["abbrev"]
-        result = grade_straight(leg["market"], leg["team"], leg["line"],
-                                g["away_score"], g["home_score"], away, home)
+        result = _grade_leg(leg, g, away, home, db_path, stats)
         units = pick["units_final"] or pick["units_model"] or 1.0
         won = units_won(result, units, payout_multiplier(leg["odds_american"]))
 
@@ -92,8 +149,7 @@ def grade_pick(pick_id: int, db_path=db.DEFAULT_DB) -> dict:
             g = games[int(leg["game_id"])]
             away = db.query(db_path, "SELECT abbrev FROM teams WHERE id=?", (g["away_team"],))[0]["abbrev"]
             home = db.query(db_path, "SELECT abbrev FROM teams WHERE id=?", (g["home_team"],))[0]["abbrev"]
-            leg_result = grade_straight(leg["market"], leg["team"], leg["line"],
-                                        g["away_score"], g["home_score"], away, home)
+            leg_result = _grade_leg(leg, g, away, home, db_path, stats)
             leg_results.append((leg, leg_result))
         units = pick["units_final"] or pick["units_model"] or 1.0
         if any(r == "L" for _, r in leg_results):

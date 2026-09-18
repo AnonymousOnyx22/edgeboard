@@ -31,6 +31,17 @@
   --muted: #78787e;
   --faint: #55555c;
 
+  /* Semantic result ink. Reserved for settled outcomes, never decoration. */
+  /* The one non-verdict accent: used to light up a row under the cursor,
+     where green and red would read as a result rather than a hover. */
+  --accent: #7cc4ff;
+  --accent-bg: rgba(124, 196, 255, 0.09);
+
+  --win: #58dc8b;
+  --win-bg: rgba(88, 220, 139, 0.10);
+  --loss: #ff6675;
+  --loss-bg: rgba(255, 102, 117, 0.10);
+
   /* Light. Glow is white at low alpha  never a colour. */
   --glow-strong: rgba(255, 255, 255, 0.16);
   --glow: rgba(255, 255, 255, 0.08);
@@ -170,7 +181,9 @@ html.js [data-reveal].is-settled { will-change: auto; }
 
 .brand small { display: block; color: var(--faint); font-size: 11px; margin-top: 1px; }
 
-nav { display: flex; flex-direction: column; gap: 2px; }
+/* Scoped to the sidebar: an unscoped `nav` rule reaches every other <nav>
+   on the page, and a horizontal filter is a nav too. */
+.sidebar nav { display: flex; flex-direction: column; gap: 2px; }
 
 .nav-label { color: var(--faint); font-size: 11px; font-weight: 450; margin: 16px 12px 6px; white-space: nowrap; }
 
@@ -638,10 +651,28 @@ html:not(.js) .progress b { transform: scaleX(1); }
   font-size: 11.5px;
   font-weight: 450;
 }
-/* Result states, still monochrome: a win is lit, a loss is outlined and dim. */
+/* Status pills remain neutral. Settled outcomes use the signed result marks. */
 .pill.green { color: var(--black); background: var(--white); border-color: transparent; font-weight: 500; }
 .pill.orange { color: var(--ink-dim); border-color: var(--line); }
 .pill.red { color: var(--muted); border-color: #2e2e34; background: rgba(255, 255, 255, 0.02); }
+
+.result-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+.result-win { color: var(--win); background: var(--win-bg); }
+.result-loss { color: var(--loss); background: var(--loss-bg); }
+.result-push { color: var(--ink-dim); background: rgba(255, 255, 255, 0.035); }
+.units-win { color: var(--win); }
+.units-loss { color: var(--loss); }
 
 /* ==========================================================================
    Parlays
@@ -866,6 +897,13 @@ html:not(.js) .progress b { transform: scaleX(1); }
   transition: filter 220ms ease;
 }
 .headshot.sm { width: 21px; height: 21px; }
+.headshot.lg {
+  width: 84px;
+  height: 84px;
+  border-width: 1.5px;
+  border-color: #33333a;
+  box-shadow: 0 0 40px var(--glow-faint), inset 0 0 0 3px rgba(255, 255, 255, 0.02);
+}
 
 @media (hover: hover) and (pointer: fine) {
   .leg:hover .headshot, .candidate:hover .headshot { filter: none; }
@@ -885,6 +923,7 @@ html:not(.js) .progress b { transform: scaleX(1); }
   font-weight: 500;
 }
 .avatar-fallback.sm { width: 21px; height: 21px; font-size: 9px; }
+.avatar-fallback.lg { width: 84px; height: 84px; font-size: 30px; }
 
 .matchup-crests { display: inline-flex; align-items: center; gap: 6px; }
 .matchup-crests .at { color: var(--faint); font-size: 12px; }
@@ -909,7 +948,7 @@ html:not(.js) .progress b { transform: scaleX(1); }
 .data-table td b { font-weight: 500; }
 .data-table tbody tr { transition: background-color 160ms ease; }
 @media (hover: hover) and (pointer: fine) {
-  .data-table tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+  .data-table tbody tr:hover { background: var(--accent-bg); }
 }
 
 /* ==========================================================================
@@ -965,6 +1004,243 @@ html:not(.js) .progress b { transform: scaleX(1); }
 }
 
 /* ==========================================================================
+   Players and teams
+   Sport switch + team filter up top, then a ranked player table. Headshots
+   follow the monochrome rule that crests do: desaturated, back to colour on
+   hover where a pointer exists.
+   ========================================================================== */
+
+.seg-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 20px 0 6px; }
+
+.seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 6px 13px;
+  color: var(--ink-dim);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease,
+              transform 150ms var(--ease-out);
+}
+.seg.active {
+  color: var(--black);
+  background: var(--white);
+  border-color: transparent;
+  box-shadow: 0 0 18px var(--glow-faint);
+}
+.seg:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) {
+  .seg:hover { color: var(--ink); border-color: #34343b; }
+  .seg.active:hover { color: var(--black); filter: brightness(1.06); }
+}
+
+/* Thirty clubs wrapped onto five rows pushed the board itself below the
+   fold, so the filter is one row that scrolls sideways instead. */
+.team-filter {
+  display: flex;
+  /* The sidebar's bare `nav` rule set flex-direction: column, and this filter
+     is also a <nav>. Without stating a direction the chips ran down the page
+     instead of across it. */
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+  gap: 5px;
+  margin: 10px 0 12px;
+  padding: 8px 0 9px;
+  border-bottom: 1px solid var(--line-soft);
+  /* Three rows of chips, then it scrolls. Thirty clubs wrapped freely pushed
+     the board itself below the fold; three rows shows most of a league while
+     leaving the table in view. */
+  max-height: calc(3 * 28px + 2 * 5px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.team-filter::-webkit-scrollbar { width: 5px; }
+.team-filter::-webkit-scrollbar-track { background: transparent; }
+.team-filter::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+.team-filter > * { flex: none; }
+
+.team-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 11.5px;
+  font-weight: 550;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+.team-filter-chip.active {
+  color: var(--black);
+  background: var(--white);
+  border-color: var(--white);
+}
+.team-filter-chip.active .crest { filter: none; opacity: 1; }
+.team-filter-chip:focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .team-filter-chip:hover { color: var(--ink); border-color: #3b3b42; }
+  .team-filter-chip:hover .crest { filter: none; opacity: 1; }
+  .team-filter-chip.active:hover { color: var(--black); }
+}
+
+.player-actions {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.player-actions .note { margin: 0; }
+.player-actions form { display: flex; align-items: center; gap: 10px; }
+
+.team-player-stack { display: grid; gap: 14px; margin-top: 8px; }
+
+.team-player-panel {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--grad-surface);
+}
+.team-player-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-2);
+}
+.team-player-identity { display: flex; align-items: center; gap: 11px; }
+.team-player-identity > .crest { width: 34px; height: 34px; filter: none; opacity: 1; }
+.team-player-identity h2 { margin: 0 0 1px; font-size: 16px; font-weight: 560; }
+.team-player-identity span { color: var(--muted); font-size: 11.5px; }
+
+.team-roster { display: grid; }
+.team-roster-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.25fr) minmax(220px, 1fr) 76px;
+  align-items: center;
+  gap: 18px;
+  min-height: 58px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.team-roster-row:first-child { border-top: 0; }
+.roster-player > span, .roster-market, .roster-chance { display: grid; min-width: 0; }
+.roster-player small, .roster-market span, .roster-chance span {
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.roster-market b { font-size: 12.5px; font-weight: 540; }
+.roster-market span { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.roster-chance { text-align: right; }
+.roster-chance b { color: var(--white); font-size: 17px; font-weight: 570; }
+.team-panel-state { display: grid; gap: 3px; padding: 22px 16px; color: var(--muted); }
+.team-panel-state b { color: var(--ink); font-weight: 520; }
+.team-panel-state span { font-size: 12px; }
+
+/* Directional cells: a win is lit, a loss recedes, anywhere on the page. */
+.positive { color: var(--white); text-shadow: 0 0 14px var(--glow-faint); }
+.negative { color: var(--muted); }
+.note.warn { color: var(--ink-dim); }
+
+.player-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 20px 0 26px;
+  padding: 20px;
+}
+.player-header .card { display: flex; }
+.player-header p { min-height: 0; margin-bottom: 0; }
+.muted { color: var(--muted); }
+
+.pos { color: var(--faint); font-size: 11.5px; font-weight: 450; }
+.mono { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--muted); }
+
+.player-link, .team-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.player-link b { color: var(--ink); font-weight: 500; }
+.player-link .pos { margin-left: 2px; }
+.team-link b { color: var(--ink); font-weight: 500; }
+.team-link .pos { margin-left: 2px; }
+
+/* Hovering a name lights it up, and the row it sits in tints with it, so a
+   long board stays trackable across eight columns. A crest or headshot is
+   dimmed until then, matching the rest of the page. */
+.player-link, .team-link {
+  transition: color 140ms ease;
+}
+.player-link b, .team-link b {
+  transition: color 140ms ease;
+}
+.player-link .crest, .player-link .headshot,
+.team-link .crest, .team-link .headshot {
+  transition: opacity 140ms ease, filter 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .player-link:hover b,
+  .team-link:hover b { color: var(--accent); }
+
+  .player-link:hover .headshot, .player-link:hover .crest,
+  .team-link:hover .headshot, .team-link:hover .crest {
+    filter: none;
+    opacity: 1;
+  }
+
+  .team-roster-row:hover { background: var(--accent-bg); }
+  .team-roster-row:hover .player-link b { color: var(--accent); }
+}
+
+.back { display: inline-block; color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+.back:hover { color: var(--ink); }
+
+.bet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+
+.bet { padding: 16px 17px; }
+.bet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.bet-head h3 { font-size: 15px; margin-bottom: 10px; }
+.prob { color: var(--white); font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.bet-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.bet-meta div { min-width: 0; }
+.bet-meta dt { color: var(--faint); font-size: 11px; margin-bottom: 2px; }
+.bet-meta dd { margin: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+
+.check-inline { color: var(--muted); font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; }
+.check-inline input { width: 14px; height: 14px; accent-color: var(--white); min-height: auto; }
+
+.button.small { padding: 4px 10px; font-size: 12px; min-height: 28px; }
+
+.progress.wide b { transform: none; transition: width 500ms var(--ease-out); }
+
+/* ==========================================================================
    Responsive
    ========================================================================== */
 
@@ -995,6 +1271,9 @@ html:not(.js) .progress b { transform: scaleX(1); }
   .settings-grid { grid-template-columns: 1fr; }
   .hero-panel { min-height: 220px; }
   h1 { max-width: none; font-size: 22px; }
+  .team-roster-row { grid-template-columns: minmax(0, 1fr) 68px; gap: 10px; }
+  .roster-market { grid-column: 1 / -1; grid-row: 2; padding-left: 33px; }
+  .roster-chance { grid-column: 2; grid-row: 1; }
 }
 
 @media (max-width: 460px) {
@@ -1024,4 +1303,169 @@ html:not(.js) .progress b { transform: scaleX(1); }
   }
   .progress b { transform: scaleX(1); }
   .chart-line.is-drawable { stroke-dasharray: none; stroke-dashoffset: 0; }
+}
+
+/* A whole section that folds away, reusing the section-head layout inside a
+   <summary> so a collapsed section reads exactly like an open one. Used by the
+   model-pick ledger, which grows without bound. */
+.section-fold > summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  cursor: pointer;
+  list-style: none;
+  padding-bottom: 14px;
+}
+.section-fold > summary::-webkit-details-marker { display: none; }
+
+.section-fold > summary h2 { margin: 0; }
+.section-fold > summary p { margin: 4px 0 0; }
+
+.fold-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+/* The same disclosure caret the backing panels use. */
+.section-fold > summary::after {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 8px;
+  border-right: 1px solid var(--muted);
+  border-bottom: 1px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 220ms var(--ease-out);
+}
+.section-fold[open] > summary::after { transform: rotate(225deg); }
+
+@media (hover: hover) and (pointer: fine) {
+  .section-fold > summary:hover .fold-count { color: var(--ink); }
+}
+
+/* ---------------------------------------------------------------- tickets
+   Today's fixtures as cards. The stub on the left carries the when, the body
+   the who, and the foot the where plus the best number on the board. */
+.ticket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.ticket {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-areas: "stub body" "stub foot";
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 160ms ease, background-color 160ms ease,
+              transform 160ms var(--ease-out);
+}
+.ticket.is-started { opacity: 0.62; }
+
+@media (hover: hover) and (pointer: fine) {
+  .ticket:hover {
+    border-color: var(--accent);
+    background: var(--surface-2);
+    transform: translateY(-1px);
+  }
+  .ticket:hover .ticket-team { color: var(--accent); }
+  .ticket:hover .crest { filter: none; opacity: 1; }
+}
+.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The stub, separated by a perforation rather than a plain border. */
+.ticket-stub {
+  grid-area: stub;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 14px 10px;
+  background: var(--surface-2);
+  border-right: 1px dashed var(--line);
+  text-align: center;
+}
+.ticket-day { color: var(--muted); font-size: 11px; letter-spacing: 0.02em; }
+.ticket-time {
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.ticket-live {
+  margin-top: 3px;
+  color: var(--loss);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ticket-body {
+  grid-area: body;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 14px 8px;
+}
+.ticket-side { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ticket-side .crest { width: 30px; height: 30px; }
+.ticket-team { color: var(--ink); font-size: 14px; font-weight: 550; transition: color 140ms ease; }
+.ticket-role { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.ticket-at { color: var(--faint); font-size: 12px; }
+
+.ticket-foot {
+  grid-area: foot;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 14px 14px;
+  min-width: 0;
+}
+.ticket-venue {
+  color: var(--ink-dim);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ticket-city { color: var(--faint); font-size: 11px; }
+.ticket-best {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 5px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+  min-width: 0;
+}
+.ticket-best b { color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------------------------ game detail */
+.game-hero { margin-bottom: 22px; }
+.game-hero-teams { display: flex; align-items: center; gap: 14px; }
+.game-hero-side { display: inline-flex; align-items: center; gap: 9px; }
+.game-hero-side .crest { width: 34px; height: 34px; }
+.game-hero-side b { color: var(--white); font-size: 21px; font-weight: 500; }
+.game-hero-at { color: var(--faint); font-size: 14px; }
+.game-hero-meta { color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+@media (max-width: 460px) {
+  .ticket { grid-template-columns: 74px minmax(0, 1fr); }
+  .ticket-body { gap: 8px; padding: 12px 10px 8px; }
+  .ticket-foot { padding: 0 10px 12px; }
 }

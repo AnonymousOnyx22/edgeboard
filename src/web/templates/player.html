@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% import "_media.html" as media with context %}
+{% block title %}Edgeboard · {{ view.name }}{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('players_page', sport=sport.code) }}">← Back to players</a>
+
+<div class="player-header card">
+  {{ media.headshot(view.athlete_id, view.name, sport.code, 'lg') }}
+  <div>
+    <div class="eyebrow">{{ sport.name }} · {{ view.team }}</div>
+    <h1>{{ view.name }}</h1>
+    <p class="muted">
+      {% if view.position %}{{ view.position }} · {% endif %}
+      <a href="{{ url_for('team_detail', sport=sport.code, abbrev=view.team) }}" style="text-decoration:underline">{{ view.team }}</a>
+      · {{ 'vs' if view.at_home else '@' }} {{ view.opponent }} · {{ view.kickoff }}
+      {% if view.injury_status %}<span class="pill red" style="margin-left:8px">{{ view.injury_status }}</span>{% endif %}
+    </p>
+  </div>
+</div>
+
+{% if view.bets %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Model reads</div>
+      <h2>Best bets for tonight</h2>
+      <p>Ranked by probability the prop clears, merged with the market where a price exists.</p>
+    </div>
+  </div>
+  <div class="bet-grid">
+    {% for bet in view.bets %}
+    <article class="bet card">
+      <div class="bet-head">
+        <h3>{{ bet.headline }}</h3>
+        <span class="prob">{{ '%.0f%%'|format(bet.probability * 100) }}</span>
+      </div>
+      <dl class="bet-meta">
+        {% if bet.odds is not none %}
+        <div><dt>Price</dt><dd>{{ '%+d'|format(bet.odds) }}</dd></div>
+        <div><dt>Edge</dt><dd class="{{ 'positive' if (bet.edge or 0) >= 0 else 'negative' }}">{{ '%+.1f%%'|format((bet.edge or 0) * 100) }}</dd></div>
+        {% endif %}
+        <div><dt>Projection</dt><dd class="mono">{{ '%.1f'|format(bet.projection.mean) }}</dd></div>
+        <div><dt>Format</dt><dd>{{ bet.stat_key }}</dd></div>
+        <div><dt>Recent</dt><dd class="mono">{{ bet.evidence() }}</dd></div>
+      </dl>
+      {% if bet.warnings %}<p class="note warn">⚠ {{ bet.warnings }}</p>{% endif %}
+      {% if not bet.priced %}<p class="note">Model line only — no market price on this market yet.</p>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<div class="empty"><h3>No bets above the {{ 55 }}% floor.</h3><p>The model found nothing worth playing for this player yet.</p></div>
+{% endif %}
+
+{% if view.games %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Game log</div>
+      <h2>Recent games</h2>
+      <p>Last {{ view.games|length }} appearances from ESPN, newest first.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Date</th><th>Opp</th><th>Result</th>
+        {% for key in view.stat_keys %}<th>{{ sport.stat_labels.get(key, key) }}</th>{% endfor %}
+        <th>TOI</th><th>SA</th>
+      </tr></thead>
+      <tbody>
+      {% for g in view.games %}
+        <tr>
+          <td>{{ g.date }}</td>
+          <td>{{ 'vs' if g.at_home else '@' }} {{ g.opponent }}</td>
+          <td class="{{ 'positive' if g.result == 'W' else 'negative' }}">{{ g.result or '·' }}</td>
+{% for key in view.stat_keys %}
+            <td class="mono">{% if g.get(key) is not none %}{{ g.get(key) }}{% else %}·{% endif %}</td>
+          {% endfor %}
+          <td class="mono">{{ g.minutes }}</td>
+          <td class="mono">{{ g.S }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if view.vs_games %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Head to head</div>
+      <h2>Recent games vs {{ view.opponent }}</h2>
+      <p>How this player has run against the next opponent.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Date</th><th>Result</th>
+        {% for key in view.stat_keys %}<th>{{ sport.stat_labels.get(key, key) }}</th>{% endfor %}
+        <th>TOI</th>
+      </tr></thead>
+      <tbody>
+      {% for g in view.vs_games %}
+        <tr>
+          <td>{{ g.date }}</td>
+          <td class="{{ 'positive' if g.result == 'W' else 'negative' }}">{{ g.result or '·' }}</td>
+          {% for key in view.stat_keys %}
+            <td class="mono">{% if g.get(key) is not none %}{{ g.get(key) }}{% else %}·{% endif %}</td>
+          {% endfor %}
+          <td class="mono">{{ g.minutes }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

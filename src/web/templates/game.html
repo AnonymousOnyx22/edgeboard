@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% import "_media.html" as media with context %}
+
+{% block content %}
+<a class="back" href="{{ url_for('tickets', sport=sport.code) }}">← Today’s games</a>
+
+<div class="game-hero">
+  <div class="game-hero-teams">
+    <span class="game-hero-side">
+      {{ media.crest(card.away, sport.code) }}<b>{{ card.away }}</b>
+    </span>
+    <span class="game-hero-at">@</span>
+    <span class="game-hero-side">
+      {{ media.crest(card.home, sport.code) }}<b>{{ card.home }}</b>
+    </span>
+  </div>
+  <p class="game-hero-meta">
+    {{ card.kickoff_day() }} · {{ card.kickoff_time() }}
+    {% if card.venue %} · {{ card.venue }}{% endif %}
+    {% if card.venue_city %} · {{ card.venue_city }}{% endif %}
+  </p>
+  {% if card.started %}
+    <p class="note">This game has started, so the numbers below are no longer bettable.</p>
+  {% endif %}
+</div>
+
+<section class="section">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Game lines</div>
+      <h2>Moneyline, spread and total</h2>
+      <p>Every offered number the model has a view on, best edge first.</p>
+    </div>
+  </div>
+  {% if card.candidates %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Bet</th><th>Market</th><th>Price</th><th>Model</th><th>Implied</th><th>Edge</th><th>Confidence</th>
+      </tr></thead>
+      <tbody>
+      {% for c in card.candidates|sort(attribute='edge', reverse=true) %}
+        <tr>
+          <td>{{ media.pick_badge(c.side, sport.code) }}<b>{{ c.headline }}</b></td>
+          <td>{{ c.market }}</td>
+          <td>{{ '%+d'|format(c.odds) }}</td>
+          <td>{{ '%.0f%%'|format(c.model_prob * 100) }}</td>
+          <td>{{ '%.0f%%'|format(c.implied_prob * 100) }}</td>
+          <td class="{{ 'positive' if c.edge >= 0 else 'negative' }}">{{ '%+.1f%%'|format(c.edge * 100) }}</td>
+          <td>{{ c.confidence.score }}/10</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty"><h3>No priced game lines.</h3><p>Sync odds on the games page and come back.</p></div>{% endif %}
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">Player bets</div>
+      <h2>Props on this game</h2>
+      <p>Form is head to head: what the player has done against this opponent.</p>
+    </div>
+  </div>
+  {% if props %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Player</th><th>Bet</th><th>Hit chance</th><th>Price / edge</th><th>Evidence</th>
+      </tr></thead>
+      <tbody>
+      {% for p in props %}
+        <tr>
+          <td>
+            <a href="{{ url_for('player_detail', sport=sport.code, athlete_id=p.athlete_id, team=p.team) }}" class="player-link">
+              {{ media.headshot(p.athlete_id, p.player, sport.code) }}<b>{{ p.player }}</b><span class="pos">{{ p.position }}</span>
+            </a>
+          </td>
+          <td><b>{{ p.headline }}</b></td>
+          <td>{{ '%.0f%%'|format(p.probability * 100) }}</td>
+          <td>
+            {% if p.odds is not none %}{{ '%+d'|format(p.odds) }}
+              <span class="{{ 'positive' if (p.edge or 0) >= 0 else 'negative' }}">({{ '%+.1f%%'|format((p.edge or 0) * 100) }})</span>
+            {% else %}<span class="pos">no price</span>{% endif %}
+          </td>
+          <td class="mono">{{ p.evidence() }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty">
+      <h3>No player bets cached for this game.</h3>
+      <p>{{ props_note or 'Build the player board to price this game’s props.' }}</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

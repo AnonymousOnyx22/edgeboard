@@ -30,7 +30,9 @@ CREATE TABLE IF NOT EXISTS games (
     status      TEXT NOT NULL DEFAULT 'scheduled',  -- scheduled / in_progress / final / postponed
     week        INTEGER,
     away_score  INTEGER,
-    home_score  INTEGER
+    home_score  INTEGER,
+    venue       TEXT,                          -- stadium/park name
+    venue_city  TEXT                           -- "St. Petersburg, Florida"
 );
 CREATE INDEX IF NOT EXISTS idx_games_start ON games(start_utc);
 CREATE INDEX IF NOT EXISTS idx_games_sport  ON games(sport_id, status);
@@ -71,13 +73,17 @@ CREATE TABLE IF NOT EXISTS pick_legs (
     pick_id     INTEGER NOT NULL REFERENCES picks(id) ON DELETE CASCADE,
     ord         INTEGER NOT NULL,
     game_id     INTEGER NOT NULL REFERENCES games(id),
-    market      TEXT NOT NULL,                 -- h2h / spread / total
+    market      TEXT NOT NULL,                 -- h2h / spread / total, or
+                                               -- prop:<espn stat key>, e.g.
+                                               -- prop:passingYards
     team        TEXT NOT NULL,                 -- team abbrev or "Over"/"Under"
-    line        REAL,                          -- for spread/total
+    line        REAL,                          -- for spread/total/prop
     odds_american INTEGER NOT NULL,
     model_prob  REAL,
     implied_prob REAL,
     edge        REAL,
+    athlete_id  TEXT,                          -- ESPN athlete id, props only
+    player      TEXT,                          -- display name, props only
     support_stat TEXT,
     reason      TEXT,
     UNIQUE(pick_id, ord)

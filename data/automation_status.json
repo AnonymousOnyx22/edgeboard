@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-09-17T23:16:39.500543+00:00",
+  "started_utc": "2026-09-18T17:26:12.918407+00:00",
   "sports": {
     "nfl": {
       "games": 16,
@@ -9,14 +9,14 @@
       "parlay_snapshots": 1
     },
     "mlb": {
-      "games": 88,
+      "games": 91,
       "odds_source": "odds_api",
-      "odds_games": 16,
-      "picks_added": 0,
+      "odds_games": 15,
+      "picks_added": 3,
       "parlay_snapshots": 0
     },
     "nhl": {
-      "games": 36,
+      "games": 47,
       "odds_source": "odds_api",
       "odds_games": 4,
       "picks_added": 0,
@@ -25,5 +25,5 @@
   },
   "graded": 0,
   "error": null,
-  "finished_utc": "2026-09-17T23:17:39.650057+00:00"
+  "finished_utc": "2026-09-18T17:27:51.379260+00:00"
 }
