@@ -187,7 +187,13 @@ class PropBook:
         self._index()
 
     def _index(self) -> None:
+        from .odds_client import allowed_books
+        books = set(allowed_books())
         for book in self.payload.get("bookmakers", []):
+            # Offshore books are priced here too, and a prop is no more
+            # bettable than a game line at a book you cannot reach.
+            if books and (book.get("key") or "").lower() not in books:
+                continue
             for market in book.get("markets", []):
                 stat_key = self.market_to_stat.get(market.get("key", ""))
                 if not stat_key:

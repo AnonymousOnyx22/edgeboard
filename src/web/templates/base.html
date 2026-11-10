@@ -4,25 +4,32 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#08080a">
-  <title>{% block title %}Edgeboard{% endblock %}</title>
+  <meta name="theme-color" content="#0D1B2A">
+  <title>Edgeboard: {% block title %}Overview{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23ffffff'/><g fill='%23000000'><rect x='4' y='19' width='5' height='9' rx='1.6'/><rect x='13.5' y='13' width='5' height='15' rx='1.6'/><rect x='23' y='6' width='5' height='22' rx='1.6'/></g></svg>">
-  <script>
-    /* Set before paint, so the reveal styles only ever apply when a script is
-       around to undo them. The timeout is a failsafe: if app.js never runs the
-       styles are dropped, because invisible content is the worst failure. */
-    document.documentElement.classList.add('js');
-    setTimeout(function () {
-      var root = document.documentElement;
-      if (!root.hasAttribute('data-reveal-ready')) root.classList.remove('js');
-    }, 2500);
-  </script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230D1B2A'/><g fill='%23FFB23E'><rect x='4' y='19' width='5' height='9' rx='1.6'/><rect x='13.5' y='13' width='5' height='15' rx='1.6'/><rect x='23' y='6' width='5' height='22' rx='1.6'/></g></svg>">
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+  {# A page showing a game in progress reloads itself, because the live
+     refresh it kicked off lands after the page has already been sent. #}
+  {% if any_live %}<meta http-equiv="refresh" content="45">{% endif %}
+  {% if service_on %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/account.css') }}">{% endif %}
   {% block head %}{% endblock %}
 </head>
-<body data-drawer="closed">
+<body data-drawer="closed" data-page="{{ active or '' }}">
+  <a class="skip-link" href="#main">Skip to content</a>
   <div class="scrim" id="scrim" aria-hidden="true"></div>
+
+  {% macro nav_link(key, endpoint, label, icon, count=None) -%}
+    <a class="nav-item {{ 'active' if active == key }}" href="{{ url_for(endpoint) }}"
+       {% if active == key %}aria-current="page"{% endif %}>
+      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">{{ icon|safe }}</svg>
+      <span class="nav-text">{{ label }}</span>
+      {% if count %}<span class="nav-count" aria-label="{{ count }} open">{{ count }}</span>{% endif %}
+    </a>
+  {%- endmacro %}
 
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="{{ url_for('home') }}">
@@ -35,83 +42,40 @@
           </g>
         </svg>
       </span>
-      <span class="brand-copy">
-        <span class="brand-name">Edgeboard</span>
-      </span>
+      <span class="brand-copy"><span class="brand-name">Edgeboard</span></span>
     </a>
 
-    <nav aria-label="Primary">
-      <span class="nav-label">Workspace</span>
+    <nav class="rail-nav" aria-label="Primary">
+      <span class="nav-label">Tonight</span>
+      {{ nav_link('home', 'home', 'Overview',
+           '<path d="M2.5 6.8 8 2.5l5.5 4.3V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>') }}
+      {{ nav_link('tickets', 'tickets', 'Today’s games',
+           '<path d="M2.2 6.1V4.6a1 1 0 0 1 1-1h9.6a1 1 0 0 1 1 1v1.5a1.9 1.9 0 0 0 0 3.8v1.5a1 1 0 0 1-1 1H3.2a1 1 0 0 1-1-1V9.9a1.9 1.9 0 0 0 0-3.8z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.4 3.6v8.8" stroke="currentColor" stroke-width="1.3" stroke-dasharray="1.6 1.6"/>') }}
+      {{ nav_link('model', 'model_picks', 'Model picks',
+           '<path d="M2.5 11.5 6 7l3 2.6 4.5-5.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="7" r="1.2" fill="currentColor"/>',
+           open_count) }}
 
-      <a class="nav-item {{ 'active' if active == 'home' }}" href="{{ url_for('home') }}"
-         {% if active == 'home' %}aria-current="page"{% endif %}>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M2.5 6.8 8 2.5l5.5 4.3V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"
-                stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-        </svg>
-        <span class="nav-text">Overview</span>
-      </a>
+      <span class="nav-label">Research</span>
+      {{ nav_link('props', 'hitrates.props', 'Hit rates',
+           '<path d="M2.5 13.5h11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M4 11V7M8 11V4M12 11V8.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>') }}
+      {{ nav_link('players', 'players_page', 'Players',
+           '<circle cx="8" cy="5.4" r="2.6" stroke="currentColor" stroke-width="1.3"/><path d="M2.9 13.2c.7-2.4 2.7-3.8 5.1-3.8s4.4 1.4 5.1 3.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>') }}
+      {{ nav_link('teams', 'teams_index', 'Teams',
+           '<path d="M8 1.8 13 4v3.4c0 3-2 5.2-5 6.8-3-1.6-5-3.8-5-6.8V4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>') }}
 
-      <a class="nav-item {{ 'active' if active == 'tickets' }}" href="{{ url_for('tickets') }}"
-         {% if active == 'tickets' %}aria-current="page"{% endif %}>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M2.2 6.1V4.6a1 1 0 0 1 1-1h9.6a1 1 0 0 1 1 1v1.5a1.9 1.9 0 0 0 0 3.8v1.5a1 1 0 0 1-1 1H3.2a1 1 0 0 1-1-1V9.9a1.9 1.9 0 0 0 0-3.8z"
-                stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-          <path d="M9.4 3.6v8.8" stroke="currentColor" stroke-width="1.3" stroke-dasharray="1.6 1.6"/>
-        </svg>
-        <span class="nav-text">Today’s games</span>
-      </a>
-
-      <a class="nav-item {{ 'active' if active == 'model' }}" href="{{ url_for('model_picks') }}"
-         {% if active == 'model' %}aria-current="page"{% endif %}>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M2.5 11.5 6 7l3 2.6 4.5-5.6" stroke="currentColor" stroke-width="1.4"
-                stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="6" cy="7" r="1.2" fill="currentColor"/>
-        </svg>
-        <span class="nav-text">Model picks</span>
-      </a>
-
-      <a class="nav-item {{ 'active' if active == 'players' }}" href="{{ url_for('players_page') }}"
-         {% if active == 'players' %}aria-current="page"{% endif %}>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <circle cx="8" cy="5.4" r="2.6" stroke="currentColor" stroke-width="1.3"/>
-          <path d="M2.9 13.2c.7-2.4 2.7-3.8 5.1-3.8s4.4 1.4 5.1 3.8"
-                stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        </svg>
-        <span class="nav-text">Players</span>
-      </a>
-
-      <a class="nav-item {{ 'active' if active == 'teams' }}" href="{{ url_for('teams_index') }}"
-         {% if active == 'teams' %}aria-current="page"{% endif %}>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M8 1.8 13 4v3.4c0 3-2 5.2-5 6.8-3-1.6-5-3.8-5-6.8V4z"
-                stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-        </svg>
-        <span class="nav-text">Teams</span>
-      </a>
-
-      <a class="nav-item {{ 'active' if active == 'performance' }}" href="{{ url_for('performance') }}"
-         {% if active == 'performance' %}aria-current="page"{% endif %}>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M3 13V9M8 13V4M13 13v-6" stroke="currentColor" stroke-width="1.4"
-                stroke-linecap="round"/>
-        </svg>
-        <span class="nav-text">Performance</span>
-      </a>
-
-      <span class="nav-label">System</span>
-
-      <a class="nav-item {{ 'active' if active == 'settings' }}" href="{{ url_for('settings') }}"
-         {% if active == 'settings' %}aria-current="page"{% endif %}>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <circle cx="8" cy="8" r="2.1" stroke="currentColor" stroke-width="1.3"/>
-          <path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6"
-                stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        </svg>
-        <span class="nav-text">Settings</span>
-      </a>
+      <span class="nav-label">Record</span>
+      {{ nav_link('performance', 'performance', 'Performance',
+           '<path d="M3 13V9M8 13V4M13 13v-6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>') }}
+      {{ nav_link('settings', 'settings', 'Settings',
+           '<circle cx="8" cy="8" r="2.1" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>') }}
     </nav>
+
+    {% if service_on %}
+      <span class="nav-label">Plans</span>
+      {{ nav_link('pricing', 'billing.pricing', 'Pricing',
+           '<path d="M2.5 8.6 8.6 2.5h4.9v4.9l-6.1 6.1a1 1 0 0 1-1.4 0L2.5 10a1 1 0 0 1 0-1.4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="10.6" cy="5.4" r="1" fill="currentColor"/>') }}
+    {% endif %}
+    {% include "_account_nav.html" %}
 
     <button class="nav-toggle" id="navToggle" type="button"
             aria-controls="sidebar" aria-expanded="true">
@@ -125,31 +89,58 @@
     <div class="sidebar-foot">
       {% if credits %}
         <span class="connection"><b></b> Odds connected</span>
-        <small>{{ credits.remaining }} credits remaining</small>
+        <small>{{ credits.remaining }} credits left</small>
       {% else %}
-        <span class="connection muted"><b></b> ESPN fallback</span>
-        <small>Add an Odds API key for live books</small>
+        <span class="connection muted"><b></b> ESPN only</span>
+        <small>Add an Odds API key for live prices</small>
       {% endif %}
-      <p>19+ · Please gamble responsibly.<br>Projections are estimates, not guarantees.</p>
+      <p>19+. Please gamble responsibly. Projections are estimates, not guarantees.</p>
     </div>
   </aside>
 
   <div class="app-shell">
     <header class="topbar">
       <button class="menu-button" id="menuButton" type="button"
-              aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false">
+              aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" stroke="currentColor"
                 stroke-width="1.4" stroke-linecap="round"/>
         </svg>
       </button>
-      <span class="top-date">{{ today }}</span>
+
+      {# The crawl: every open pick, live ones first. The list is duplicated by
+         app.js for a seamless loop; without a script it simply scrolls. #}
+      <section class="crawl {{ 'is-empty' if not crawl }}" aria-label="Open picks">
+        {% if crawl %}
+        <div class="crawl-viewport">
+          <ul class="crawl-list" id="crawlList">
+            {% for pick in crawl %}{% set st = live_status(pick) %}
+            <li class="crawl-item {{ 'is-live' if st and st.live }}">
+              <a href="{{ url_for('model_picks', sport=pick.sport_code) }}">
+                <span class="crawl-league">{{ (pick.sport_code or '')|upper }}</span>
+                <b class="crawl-bet">{{ bet_text(pick) }}</b>
+                <span class="crawl-odds">{{ pick.odds_american|odds }}</span>
+                {% if st and st.live %}
+                  <span class="crawl-state"><i aria-hidden="true"></i>{{ st.score|dashless if st.score else st.label }}</span>
+                {% else %}
+                  <span class="crawl-state">{{ pick.start_utc|kickoff or pick.game_date|nice_date }}</span>
+                {% endif %}
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <p class="crawl-quiet">No open picks. The model commits new ones every hour while this runs.</p>
+        {% endif %}
+      </section>
+
     </header>
 
-    <main>
+    <main id="main" tabindex="-1">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-          <div class="flash-stack">
+          <div class="flash-stack" role="status">
             {% for category, message in messages %}
               <div class="flash {{ category }}">{{ message }}</div>
             {% endfor %}
@@ -159,5 +150,7 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+
+  {% include "_age_gate.html" %}
 </body>
 </html>

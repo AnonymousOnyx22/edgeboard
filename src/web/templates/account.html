@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Not available' if underage else 'Your account' }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/account.css') }}">{% endblock %}
+{% block content %}
+{% if underage %}
+<div class="auth auth-single">
+  <section class="auth-panel">
+    <h1 class="page-title">Edgeboard is for adults</h1>
+    <p class="lede">You need to be 19 or older to use it. If betting is worrying you or someone close to you, ConnexOntario is free and confidential at 1 866 531 2600, any time.</p>
+  </section>
+</div>
+{% else %}
+{% set labels = {'active': 'Active', 'trialing': 'On trial', 'past_due': 'Payment due', 'canceled': 'Cancelled', 'inactive': 'Not active', 'unpaid': 'Unpaid', 'incomplete': 'Waiting on payment'} %}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1 class="page-title">Your account</h1>
+    <p class="lede">{{ user.email }}</p>
+  </div>
+</div>
+
+{% if checkout_done %}
+  <p class="notice" role="status">Payment received. Your plan switches on as soon as Stripe confirms it, usually within a minute.</p>
+{% endif %}
+
+<div class="account-grid">
+  <section class="plan-panel plan-{{ user_plan }}" data-reveal="rise">
+    <span class="plan-panel-label">Your plan</span>
+    <strong class="plan-panel-name">{{ prices[user_plan].name }}</strong>
+    {% if user_plan != 'free' %}
+      <dl class="plan-facts">
+        <div><dt>Status</dt><dd>{{ labels.get(user.status, user.status|capitalize) }}</dd></div>
+        <div><dt>Billed</dt><dd>{{ 'Yearly' if user.interval == 'yearly' else 'Monthly' }}</dd></div>
+        {% if user.current_period_end %}<div><dt>{{ 'Ends' if user.status == 'canceled' else 'Renews' }}</dt><dd>{{ user.current_period_end|nice_date }}</dd></div>{% endif %}
+      </dl>
+    {% else %}
+      <p class="plan-panel-copy">The graded record, two model picks a day in each league, and live scores.</p>
+    {% endif %}
+    <div class="plan-panel-actions">
+      {% if user.stripe_customer_id %}
+        <form method="post" action="{{ url_for('billing.portal') }}">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+          <button class="button" type="submit">Manage billing</button>
+        </form>
+      {% endif %}
+      {% if user_plan != 'sharp' %}
+        <a class="button primary" href="{{ url_for('billing.pricing') }}">{{ 'See paid plans' if user_plan == 'free' else 'Move to Sharp' }}</a>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="account-side" data-reveal="fade">
+    <h2>Signed in</h2>
+    <p>Member since {{ user.created_utc|nice_date }}.</p>
+    <form method="post" action="{{ url_for('accounts.logout') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+      <button class="button ghost" type="submit">Log out</button>
+    </form>
+    <p class="auth-fine">For entertainment and information. No guarantee of profit. Past results do not predict future results. ConnexOntario 1 866 531 2600.</p>
+  </section>
+</div>
+{% endif %}
+{% endblock %}

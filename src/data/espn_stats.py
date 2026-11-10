@@ -94,6 +94,14 @@ DERIVED_STATS = {
             r, ("powerPlayGoals", "powerPlayAssists")),
     },
 }
+# The NBA and WNBA share one set of combined markets.
+DERIVED_STATS["nba"] = DERIVED_STATS["wnba"] = {
+    "pointsRebounds": lambda r: _sum_or_none(r, ("points", "totalRebounds")),
+    "pointsAssists": lambda r: _sum_or_none(r, ("points", "assists")),
+    "reboundsAssists": lambda r: _sum_or_none(r, ("totalRebounds", "assists")),
+    "pointsReboundsAssists": lambda r: _sum_or_none(
+        r, ("points", "totalRebounds", "assists")),
+}
 
 BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
@@ -131,8 +139,9 @@ class EspnStats:
                 return json.loads(path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 pass  # corrupt cache entry - refetch below
-        query = {"lang": "en", "region": "us", **(params or {})}
-        resp = self.session.get(url, params=query, timeout=REQUEST_TIMEOUT)
+        # No lang/region: ESPN's defaults, and the basketball feed 503s on them.
+        url = url.replace("http://", "https://", 1)  # ESPN refs are http://
+        resp = self.session.get(url, params=params or None, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
         if path:
@@ -192,6 +201,7 @@ class EspnStats:
                         for i, key in enumerate(names):
                             stats = entry.get("stats") or []
                             row[key] = _num(stats[i]) if i < len(stats) else None
+                            _split_made_attempted(row, key, stats[i] if i < len(stats) else None)
                         for key, build in DERIVED_STATS.get(self.sport.code, {}).items():
                             try:
                                 row[key] = build(row)
@@ -247,7 +257,10 @@ class EspnStats:
         for item in listing.get("items", []):
             ref = item.get("$ref", "").split("?")[0]
             try:
-                record = self._get(ref, None, None, 0)
+                # Cached like everything else. With ttl=0 this was a fresh
+                # request per injured player on every board build.
+                injury_id = ref.rstrip("/").split("/")[-1]
+                record = self._get(ref, None, f"injury_{injury_id}.json", LIVE_TTL)
             except requests.HTTPError:
                 continue
             athlete = record.get("athlete") or {}
@@ -292,6 +305,17 @@ def _num(value) -> float | None:
         return float(str(value).replace(",", ""))
     except ValueError:
         return None
+
+
+def _split_made_attempted(row: dict, key: str, raw) -> None:
+    """Basketball sends 'fieldGoalsMade-fieldGoalsAttempted' = '5-12'. Split it
+    into the two stats it holds so 'threes made' is a plain number."""
+    parts = key.split("-")
+    values = str(raw).split("-") if raw not in (None, "") else []
+    if len(parts) != 2 or len(values) != 2:
+        return
+    for name, value in zip(parts, values):
+        row[name] = _num(value)
 
 
 def _iso_date(value: str | None) -> str | None:

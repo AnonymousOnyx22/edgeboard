@@ -1,29 +1,43 @@
 {
-  "started_utc": "2026-09-18T17:26:12.918407+00:00",
+  "started_utc": "2026-11-10T20:35:06.366224+00:00",
   "sports": {
     "nfl": {
-      "games": 16,
+      "games": 14,
       "odds_source": "odds_api",
-      "odds_games": 17,
-      "picks_added": 0,
-      "parlay_snapshots": 1
+      "odds_games": 14,
+      "picks_added": 2,
+      "parlay_snapshots": 0
     },
     "mlb": {
-      "games": 91,
+      "games": 0,
       "odds_source": "odds_api",
-      "odds_games": 15,
-      "picks_added": 3,
+      "odds_games": 0,
+      "picks_added": 0,
       "parlay_snapshots": 0
     },
     "nhl": {
       "games": 47,
       "odds_source": "odds_api",
-      "odds_games": 4,
+      "odds_games": 11,
+      "picks_added": 3,
+      "parlay_snapshots": 0
+    },
+    "nba": {
+      "games": 51,
+      "odds_source": "odds_api",
+      "odds_games": 5,
+      "picks_added": 4,
+      "parlay_snapshots": 0
+    },
+    "wnba": {
+      "games": 0,
+      "odds_source": "odds_api",
+      "odds_games": 0,
       "picks_added": 0,
       "parlay_snapshots": 0
     }
   },
   "graded": 0,
   "error": null,
-  "finished_utc": "2026-09-18T17:27:51.379260+00:00"
+  "finished_utc": "2026-11-10T20:37:21.800298+00:00"
 }

@@ -41,6 +41,14 @@ def _schedule_dates(sport: str, today: dt.date, days: int,
           AND g.status != 'final'
           AND date(COALESCE(g.game_date, g.start_utc)) <= date(?)
     """, (sport, today.isoformat()))
+    # Games left "in progress" while the app was closed. Live polling gives up
+    # on a game 12 hours after it starts, so only a resync can close them out.
+    rows += db.query(db_path, """
+        SELECT DISTINCT COALESCE(g.game_date, date(g.start_utc)) AS game_day
+        FROM games g JOIN sports s ON s.id=g.sport_id
+        WHERE s.code=? AND g.status='in_progress'
+          AND date(COALESCE(g.game_date, g.start_utc)) < date(?)
+    """, (sport, today.isoformat()))
     for row in rows:
         if row["game_day"]:
             dates.add(dt.date.fromisoformat(row["game_day"]))
@@ -57,24 +65,36 @@ def run_cycle(db_path=db.DEFAULT_DB, config: dict | None = None) -> dict:
               "error": None}
     if not _lock.acquire(blocking=False):
         return {**result, "error": "a refresh is already running"}
+    errors = []
     try:
+        # One league failing must not stop the leagues after it, or grading.
         for code in sport_registry.enabled_codes(cfg):
-            picker = Picker(code, db_path=db_path)
-            games = sum(picker.sync_games(day)
-                        for day in _schedule_dates(code, today, days, db_path))
-            odds = picker.sync_odds(day=today)
-            selected = autopick.run(code, days=days, start=today,
-                                    db_path=db_path, config=cfg)
-            snapshots = actions.snapshot_open_parlays(code, db_path)
-            result["sports"][code] = {
-                "games": games, "odds_source": odds["source"],
-                "odds_games": odds["games"], "picks_added": selected["added"],
-                "parlay_snapshots": snapshots,
-            }
+            try:
+                picker = Picker(code, db_path=db_path)
+                games = 0
+                for day in _schedule_dates(code, today, days, db_path):
+                    # ESPN drops the odd day with a 503; skip it until next hour.
+                    try:
+                        games += picker.sync_games(day)
+                    except Exception as exc:
+                        errors.append(f"{code} {day}: {exc}")
+                odds = picker.sync_odds(day=today)
+                selected = autopick.run(code, days=days, start=today,
+                                        db_path=db_path, config=cfg)
+                snapshots = actions.snapshot_open_parlays(code, db_path)
+                result["sports"][code] = {
+                    "games": games, "odds_source": odds["source"],
+                    "odds_games": odds["games"], "picks_added": selected["added"],
+                    "parlay_snapshots": snapshots,
+                }
+            except Exception as exc:
+                result["sports"][code] = {"error": str(exc)}
+                errors.append(f"{code}: {exc}")
         result["graded"] = len(grade_all(db_path))
     except Exception as exc:
-        result["error"] = str(exc)
+        errors.append(str(exc))
     finally:
+        result["error"] = "; ".join(errors) or None
         result["finished_utc"] = db.utc_now()
         _lock.release()
         if Path(db_path).resolve() == Path(db.DEFAULT_DB).resolve():

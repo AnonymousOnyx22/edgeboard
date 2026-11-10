@@ -29,16 +29,13 @@ import math
 from dataclasses import dataclass, field
 
 from ..data import sports as sport_registry
+from .confidence import market_trust, max_raw_edge
 from .h2h import PlayerSample
 
 # Books price props sharply and know things this model cannot see - a snap
 # share, a depth-chart change, a coach's plan. So the market price is used as a
-# prior: the model keeps most of its own view, but is pulled toward the price.
-# Without this, a player whose role changed last month shows up as a 30% edge.
-MARKET_TRUST = 0.35
-# A disagreement wider than this almost always means missing information
-# rather than value, and gets flagged rather than sold.
-IMPLAUSIBLE_EDGE = 0.12
+# prior (`edge.market_trust`), and a disagreement wider than `edge.max_raw_edge`
+# is flagged rather than sold: it almost always means missing information.
 
 OPPONENT_WEIGHT = 2.5      # a game against this opponent counts 2.5x
 RECENCY_HALF_LIFE = 6.0    # games until a game's weight halves
@@ -315,11 +312,18 @@ def market_candidates(sample: PlayerSample, book, min_probability: float = 0.60,
     """
     from .edge import american_to_prob, remove_vig
 
+    from ..data.odds_client import preferred_book
+    favourite = preferred_book()
+    trust = market_trust()
+
     out: list[PropCandidate] = []
     for stat_key in sample.stat_keys():
         offers = book.lines_for(sample.name, stat_key)
         if not offers:
             continue
+        # Quote the preferred book's line when it has one, rather than a
+        # better-priced line at a book you are not betting with.
+        offers = [o for o in offers if o.get("bookmaker") == favourite] or offers
         proj = project(sample, stat_key)
         if proj is None or proj.n_games < min_games:
             continue
@@ -345,12 +349,12 @@ def market_candidates(sample: PlayerSample, book, min_probability: float = 0.60,
                 except ValueError:
                     implied = american_to_prob(price)
                 # Pull the model toward the market before calling it an edge.
-                blended = ((1 - MARKET_TRUST) * model_prob
-                           + MARKET_TRUST * implied)
+                blended = ((1 - trust) * model_prob + trust * implied)
                 value = blended - implied
                 if value < min_edge:
                     continue
-                notes = _warnings(sample, proj, value, blended, implied)
+                notes = _warnings(sample, proj, model_prob - implied,
+                                  model_prob, implied)
                 out.append(PropCandidate(
                     athlete_id=sample.athlete_id, player=sample.name,
                     position=sample.position, team=sample.team,
@@ -377,7 +381,7 @@ def _warnings(sample: PlayerSample, projection: Projection, value: float,
               model_prob: float, implied: float) -> list[str]:
     """Reasons a human should hesitate, in plain words."""
     notes: list[str] = []
-    if value >= IMPLAUSIBLE_EDGE:
+    if value >= max_raw_edge():
         notes.append(
             f"Model is {abs(model_prob - implied):.0%} away from the market. "
             "That usually means a role change or injury the model cannot see.")

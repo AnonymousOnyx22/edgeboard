@@ -216,8 +216,24 @@ def ungraded_picks(db_path=db.DEFAULT_DB, game_date: str | None = None) -> list:
     return out
 
 
-def grade_all(db_path=db.DEFAULT_DB, game_date: str | None = None) -> list[dict]:
-    graded = []
+def grade_all(db_path=db.DEFAULT_DB, game_date: str | None = None,
+              stats=None) -> list[dict]:
+    """Grade everything that can be graded, and report what could not.
+
+    One pick that cannot be settled - a player whose stat line ESPN has not
+    published yet, most often - must not hold up every other pick behind it.
+    Each is graded on its own, and the ones that fail are left ungraded to be
+    retried on the next run rather than guessed at.
+    """
+    graded, failed = [], []
     for pick_id in ungraded_picks(db_path, game_date):
-        graded.append(grade_pick(pick_id, db_path))
+        try:
+            graded.append(grade_pick(pick_id, db_path, stats))
+        except Exception as exc:
+            failed.append((pick_id, str(exc)))
+    if failed:
+        grade_all.last_failures = failed
     return graded
+
+
+grade_all.last_failures = []

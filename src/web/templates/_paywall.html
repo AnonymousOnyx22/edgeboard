@@ -1,0 +1,26 @@
+{# A locked panel for a paid feature. Import with context:
+
+     {% import "_paywall.html" as pay with context %}
+     {% if has_feature('hit_rates') %} ...the grid... {% else %}{{ pay.paywall('hit_rates') }}{% endif %}
+
+   `detail` replaces the default sentence; `teaser` is optional markup shown
+   faded behind the panel so the visitor can see what they would get. #}
+{% macro paywall(feature, title=None, detail=None, teaser=None) -%}
+  {%- set code = unlocking_plan(feature) -%}
+  <section class="paywall {{ 'has-teaser' if teaser }}" aria-label="{{ title or feature_names.get(feature, 'This feature') }} is part of {{ plans[code].name }}">
+    {% if teaser %}<div class="paywall-teaser" aria-hidden="true" inert>{{ teaser }}</div>{% endif %}
+    <div class="paywall-panel">
+      <span class="paywall-lock" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none"><rect x="3" y="7" width="10" height="7" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 7V5.2a2.7 2.7 0 0 1 5.4 0V7" stroke="currentColor" stroke-width="1.4"/></svg>
+      </span>
+      <div class="paywall-copy">
+        <h3>{{ title or feature_names.get(feature, 'This feature') }}</h3>
+        <p>{{ detail or ('Part of ' ~ plans[code].name ~ ', along with the rest of what it unlocks.') }}</p>
+      </div>
+      <div class="paywall-actions">
+        <a class="button primary" href="{{ url_for('billing.pricing', want=feature) }}">See {{ plans[code].name }}</a>
+        {% if not current_user %}<a class="paywall-login" href="{{ url_for('accounts.login', next=request.full_path.rstrip('?')) }}">Log in</a>{% endif %}
+      </div>
+    </div>
+  </section>
+{%- endmacro %}

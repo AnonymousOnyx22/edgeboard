@@ -1,0 +1,8 @@
+{# The grid, the 0 line, and the units line: grey history, then the current
+   run in green (above 0) or red (below 0). Tick labels arrive signed with a
+   hyphen minus from Python, so they pass through |minus. #}
+<g class="chart-grid">{% for t in performance.ticks if t.value != 0 %}<line x1="18" y1="{{ t.y }}" x2="882" y2="{{ t.y }}"/>{% endfor %}</g>
+<line class="chart-zero" x1="18" y1="{{ performance.zero_y }}" x2="882" y2="{{ performance.zero_y }}"/>
+<g class="chart-ticks">{% for t in performance.ticks %}<text x="24" y="{{ t.y - 6 }}" class="chart-tick{{ ' chart-tick-zero' if t.value == 0 }}">{{ t.label|minus }}{{ 'u' if t.value != 0 }}</text>{% endfor %}</g>
+{% if performance.past_points %}<polyline class="chart-line chart-line-past" points="{{ performance.past_points }}"/>{% endif %}
+<polyline class="chart-line {{ 'chart-line-up' if performance.positive else 'chart-line-down' }}" points="{{ performance.current_points }}"/>

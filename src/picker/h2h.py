@@ -187,6 +187,12 @@ def team_series(team_a: str, team_b: str, history: pd.DataFrame | None = None,
     reference = as_of or dt.date.today()
     cutoff = reference.year - seasons_back
     df = frame.dropna(subset=["home_score", "away_score"]).copy()
+    # The store writes ESPN spellings, so both the lookups and the frame have
+    # to agree on that style. A frame passed in raw nflverse form ("LA","WAS")
+    # is normalised here so either spelling matches, as the docstring promises.
+    if sport == "nfl" and not df.empty:
+        df["home_team"] = df["home_team"].map(to_espn)
+        df["away_team"] = df["away_team"].map(to_espn)
     if "gameday" in df.columns:
         game_dates = pd.to_datetime(df["gameday"], errors="coerce").dt.date
         df = df[game_dates < reference]
@@ -301,7 +307,7 @@ def player_series(team_espn_id: str | int, team_abbrev: str, opponent_abbrev: st
     if not eligible:
         return []
     ordered: list[PlayerSample | None] = [None] * len(eligible)
-    workers = min(6, len(eligible))
+    workers = min(12, len(eligible))
     with ThreadPoolExecutor(max_workers=workers,
                             thread_name_prefix=f"{sport}-player") as pool:
         pending = {pool.submit(load, item): index
@@ -328,8 +334,9 @@ def default_seasons(back: int = 3) -> list[int]:
 
 
 def _history_abbrev(abbrev: str, sport: str) -> str:
-    """Abbreviation as the history frame spells it."""
-    return to_nflverse(abbrev) if sport == "nfl" else (abbrev or "").upper()
+    """Abbreviation as the history frame spells it (ESPN - the store normalises
+    every row to that style on the way in)."""
+    return to_espn(abbrev) if sport == "nfl" else (abbrev or "").upper()
 
 
 def _same_team(a: str, b: str) -> bool:

@@ -22,6 +22,7 @@ brand:
     mlb: "#041E42"
     nhl: "#006D5B"
     nba: "#C8102E"
+    wnba: "#F57C20"
 
 disclaimer: "19+ | For entertainment only | Please gamble responsibly | ConnexOntario 1-866-531-2600"
 
@@ -47,6 +48,9 @@ hashtags:
   nba:
     - "#NBAPicks"
     - "#NBABetting"
+  wnba:
+    - "#WNBAPicks"
+    - "#WNBABetting"
 
 cta:
   save: "Save this post"

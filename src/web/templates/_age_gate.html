@@ -1,0 +1,17 @@
+{# One time 19+ check, shown only in service mode until it is answered.
+   A plain form, so it works with scripting off. #}
+{% if show_age_gate %}
+<div class="age-gate" role="dialog" aria-modal="true" aria-labelledby="ageGateTitle" aria-describedby="ageGateCopy">
+  <form class="age-gate-panel" method="post" action="{{ url_for('accounts.confirm_age') }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <h2 id="ageGateTitle">Are you 19 or older?</h2>
+    <p id="ageGateCopy">Edgeboard is research for sports betting, which is only for adults. Nothing here guarantees a win.</p>
+    <div class="age-gate-actions">
+      <button class="button primary" type="submit" name="age" value="yes" autofocus>Yes, I am 19 or older</button>
+      <button class="button ghost" type="submit" name="age" value="no">No</button>
+    </div>
+    <p class="age-gate-help">Worried about betting? ConnexOntario is free and confidential at 1 866 531 2600.</p>
+  </form>
+</div>
+{% endif %}

@@ -1,8 +1,13 @@
 # Central tuning for the parlay picker: stat model, confidence, parlay search.
 
 edge:
-  target: 0.03            # min edge (model_prob - implied_vigfree) to show a line
-  max_edge_display: 0.10  # edge that maps to a full 10 on the edge scale
+  # 214 graded picks: the model said 64% on average, they won 54%, and the
+  # book's vig-free price said 54%. So the price gets most of the weight and
+  # every edge below is measured after that blend (raw gap x 0.30).
+  market_trust: 0.70      # weight on the book's price in every probability
+  max_raw_edge: 0.20      # raw gap past this is skipped (10-22, -39% at 1u)
+  target: 0.02            # min blended edge to show a line (~6.7% raw)
+  max_edge_display: 0.05  # blended edge that maps to a full 10 on the edge scale
 
 confidence:
   # Confidence = clamp(round( wE*edge_score + wP*prob_score + wQ*quality_score ), 1, 10)
@@ -26,10 +31,14 @@ confidence:
 auto_pick:
   enabled: true
   min_confidence: 6         # of 10
-  min_edge: 0.04            # model probability over the vig-free price
+  min_edge: 0.02            # blended probability over the vig-free price
+  # Paused after the record: moneylines -16u (5-9), NFL totals -20u (5-11).
+  skip_markets:
+    all: [h2h]
+    nfl: [total]
   min_backing_games: 0      # require this many prior meetings on record
   min_backing_rate: ~       # and optionally that the bet cashed this often
-  max_per_day: 5            # per sport
+  max_per_day: 100          # per sport: no real cap, every qualifying line counts
   status: approved          # approved = counts toward the tracked record
   # Player props go through the same gate as game lines. Only priced props are
   # ever committed - an unpriced projection has no edge to measure, and a
@@ -37,10 +46,12 @@ auto_pick:
   props:
     enabled: true
     min_confidence: 6       # of 10
-    min_edge: 0.04          # model probability over the vig-free price
-    max_per_day: 3          # per sport, on top of the game-line cap
-    max_games: 4            # games to pull player data and prices for
-    max_players: 12         # per team
+    min_edge: 0.02          # blended probability over the vig-free price
+    max_per_day: 100        # per sport: no real cap, every qualifying prop counts
+    # Each game's FanDuel prop prices cost about 4 Odds API credits, so this is
+    # the credit budget, not a quality bar. Raise it on a paid plan.
+    max_games: 8            # soonest games to pull player data and prices for
+    max_players: 20         # per team
     fetch_prices: true      # one Odds API credit per market per game
     require_h2h: false      # true = only players who have faced this opponent
     min_probability: 0.55
@@ -53,6 +64,17 @@ automation:
   days: 7
 
 units:
+  # What one unit is worth, for showing a record in money as well as units.
+  # Units are what the model actually stakes; this is display only, so
+  # changing it re-reads history at the new size and never edits a pick.
+  dollars_per_unit: 10
+  # The bankroll the record is measured from, in units. The performance chart
+  # starts here and each unit won or lost moves it one point, so a starting
+  # bankroll in money is simply this times dollars_per_unit.
+  starting_units: 100
+  # Every pick stakes this many units while set; remove it to size by the
+  # confidence tiers below once the probabilities have proven calibrated.
+  flat: 1
   tiers:                  # overridable per-pick in the dashboard
     1: 5.5                # confidence <= 5.5  -> 1u
     2: 7.5                # confidence <= 7.5  -> 2u
@@ -71,6 +93,12 @@ total_model:
   nhl:
     base: 6.1
     sd: 2.5
+  nba:
+    base: 228.0
+    sd: 18.0
+  wnba:
+    base: 162.0
+    sd: 16.0
 
 head_to_head:
   seasons_back: 6         # how far back to look for prior meetings
@@ -102,6 +130,12 @@ sports:
   nhl:
     enabled: true
     priority: 3
+  nba:
+    enabled: true
+    priority: 4
+  wnba:
+    enabled: true
+    priority: 5
 
 # NFL games fall into kickoff windows; MLB and NHL do not.
 kickoff_windows:
@@ -122,4 +156,25 @@ odds:
   region: "us"
   markets: ["h2h", "spreads", "totals"]
   cache_days: 1           # never re-fetch same-day odds within this window
-  bookmakers: ~           # null = use all; or e.g. ["fanduel", "draftkings"]
+  # Which books may be quoted. The "us" region also returns offshore books
+  # (Bovada, LowVig, BetOnline, MyBookie) that are not available in Ontario,
+  # and taking the best price across those invents edges against numbers
+  # nobody here can actually bet. Set to ~ to allow every book the feed
+  # returns. theScore Bet is not carried by The Odds API in any region
+  # (checked against us, us2, uk, eu and au), so it cannot be priced here.
+  # FanDuel only: every pick is a line and price you can actually bet there.
+  bookmakers: ["fanduel"]
+  preferred_book: fanduel
+
+# Public service mode: accounts, plans, the 19+ age gate and the paywall.
+# Off keeps this a private tool with everything unlocked. EDGEBOARD_SERVICE=1
+# turns it on for a hosted copy without editing this file.
+service:
+  enabled: false
+  plans:
+    pro: {monthly: 14.99, yearly: 99}
+    sharp: {monthly: 29.99, yearly: 199}
+  # Stripe price ids; the STRIPE_PRICE_<PLAN>_<INTERVAL> env vars take precedence.
+  # stripe_prices:
+  #   pro: {monthly: price_xxx, yearly: price_xxx}
+  #   sharp: {monthly: price_xxx, yearly: price_xxx}

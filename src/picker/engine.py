@@ -256,7 +256,12 @@ class Picker:
         day = day or dt.date.today()
         self.sync_games(day)
         self.sync_odds(day=day)
-        elo = self.ensure_elo(day)
+        from ..data.history_store import HistoryUnavailableError
+        try:
+            elo = self.ensure_elo(day)
+        except HistoryUnavailableError:
+            # No history -> no model -> no candidates, never a default-1500 read.
+            return []
 
         games = db.query(self.db_path, """
             SELECT g.id, ht.abbrev AS home, at.abbrev AS away, g.slate, g.start_utc

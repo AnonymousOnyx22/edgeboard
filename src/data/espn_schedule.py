@@ -60,6 +60,7 @@ class EspnSchedule:
                 return json.loads(path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 pass
+        url = url.replace("http://", "https://", 1)  # ESPN refs are http://
         resp = self.session.get(url, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
@@ -71,7 +72,7 @@ class EspnSchedule:
         """Every team id in the league."""
         listing = self._get(
             f"{CORE_HOST}/{self.sport.espn_sport}/leagues/{self.sport.espn_league}/teams",
-            {"limit": 100, "lang": "en", "region": "us"},
+            {"limit": 100},
             "team_ids.json", FINISHED_TTL)
         out = []
         for item in listing.get("items", []):

@@ -58,9 +58,15 @@ def test_confidence_in_range_and_ordering():
 
 
 def test_units_tiers():
-    assert conf.units_from_confidence(4.0) == 1.0
-    assert conf.units_from_confidence(7.0) == 2.0
-    assert conf.units_from_confidence(9.0) == 3.0
+    tiers = {"units": {"tiers": {1: 5.5, 2: 7.5, 3: 10}}}
+    assert conf.units_from_confidence(4.0, tiers) == 1.0
+    assert conf.units_from_confidence(7.0, tiers) == 2.0
+    assert conf.units_from_confidence(9.0, tiers) == 3.0
+
+
+def test_flat_stake_overrides_the_tiers():
+    flat = {"units": {"flat": 1, "tiers": {1: 5.5, 2: 7.5, 3: 10}}}
+    assert {conf.units_from_confidence(s, flat) for s in (4.0, 7.0, 9.0)} == {1.0}
 
 
 def test_display_modes():

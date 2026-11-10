@@ -17,6 +17,8 @@ meetings, because four games is evidence, not proof.
 from __future__ import annotations
 
 import datetime as dt
+import logging
+import threading
 from dataclasses import dataclass, field
 
 from ..data import models, sports as sport_registry
@@ -27,15 +29,15 @@ from . import h2h as h2h_mod
 from . import props as props_mod
 from .edge import american_to_prob, cover_probability, edge, over_probability, remove_vig
 
+logger = logging.getLogger(__name__)
+
 # How far Elo can be pulled toward the head-to-head record, per prior meeting.
 H2H_WEIGHT_PER_MEETING = 0.06
 H2H_WEIGHT_CAP = 0.30
 
-# The closing line is a sharp prior. The model keeps most of its own view but
-# is pulled toward the price, which is what stops a twenty-point disagreement
-# being staked as the best bet on the board. Matches props.MARKET_TRUST.
-MARKET_TRUST = 0.35
-IMPLAUSIBLE_EDGE = 0.12
+# The closing line is a sharp prior: every probability is blended toward the
+# price by `edge.market_trust`, and a raw gap past `edge.max_raw_edge` is
+# flagged and never auto-picked (see confidence.py for the record behind both).
 
 
 @dataclass
@@ -199,7 +201,14 @@ def day_board(day: dt.date | None = None, sport: str = "nfl",
         # The local store is the deep history the user controls; it is what the
         # Elo trainer, the scoring rates and the head-to-head record all read.
         from ..data import history_store
-        history = history_store.load_history(sport, db_path)
+        try:
+            history = history_store.load_history(sport, db_path)
+        except history_store.HistoryUnavailableError as exc:
+            # No history means no model: a board priced from a default 1500 Elo
+            # would report every underdog as value. Show the fixtures with no
+            # candidates instead, and say so instead of pretending.
+            logger.error("No history for %s: %s", sport, exc)
+            return []
     # Every input to a historical board must be information that existed before
     # that date.  Filtering only Elo would still leak future scoring rates and
     # head-to-head results into old picks.
@@ -245,6 +254,34 @@ def history_before(history, day: dt.date):
     return history.loc[dates < day].copy()
 
 
+# Building a board loads the season's history, trains Elo and prices every
+# fixture - seconds of work. Every page needs one, and several need the same
+# one twice in a request, so a built board is kept until the data behind it
+# moves. The revision token is what makes that safe: it changes as soon as a
+# game or a price does, so a stale board is never served.
+_BOARD_LOCK = threading.Lock()
+_BOARD_CACHE: dict[tuple, tuple[tuple, list]] = {}
+
+
+def _board_revision(db_path) -> tuple:
+    """A cheap token that changes whenever anything a board reads changes."""
+    row = db.query(db_path, """
+        SELECT (SELECT COUNT(*) FROM games)            AS games,
+               (SELECT MAX(id) FROM games)             AS last_game,
+               (SELECT COUNT(*) FROM odds)             AS odds,
+               (SELECT MAX(captured_utc) FROM odds)    AS last_price,
+               (SELECT MAX(COALESCE(home_score, -1) + COALESCE(away_score, -1))
+                  FROM games)                          AS scores""")[0]
+    return tuple(row[key] for key in
+                 ("games", "last_game", "odds", "last_price", "scores"))
+
+
+def clear_board_cache() -> None:
+    """Drop every cached board. For tests and after a bulk import."""
+    with _BOARD_LOCK:
+        _BOARD_CACHE.clear()
+
+
 def upcoming_board(sport: str = "nfl", days: int = 7, start: dt.date | None = None,
                    db_path=db.DEFAULT_DB, min_edge: float | None = None,
                    include_started: bool = False,
@@ -255,12 +292,28 @@ def upcoming_board(sport: str = "nfl", days: int = 7, start: dt.date | None = No
     rates - is done once and reused across the whole range, rather than per
     day, which is what `day_board` would do on its own.
 
+    The result is cached until the games or prices behind it change, because
+    a page that shows fixtures and a league table would otherwise pay for the
+    same board twice in one request.
+
     Games already under way are dropped by default, so this is a forward-
     looking card: the next games worth betting, not a diary.
     """
     start = start or dt.date.today()
+    key = (sport, days, start.isoformat(), str(db_path), min_edge,
+           include_started, limit)
+    revision = _board_revision(db_path)
+    with _BOARD_LOCK:
+        hit = _BOARD_CACHE.get(key)
+        if hit is not None and hit[0] == revision:
+            return list(hit[1])
+
     from ..data import history_store
-    history = history_store.load_history(sport, db_path)
+    try:
+        history = history_store.load_history(sport, db_path)
+    except history_store.HistoryUnavailableError as exc:
+        logger.error("No history for %s: %s", sport, exc)
+        return []
     elo = models.train_elo(history, until_date=start, sport=sport)
 
     cards: list[GameCard] = []
@@ -272,7 +325,10 @@ def upcoming_board(sport: str = "nfl", days: int = 7, start: dt.date | None = No
     if not include_started:
         cards = [c for c in cards if c.bettable]
     cards.sort(key=lambda c: c.start_utc or "")
-    return cards[:limit] if limit else cards
+    cards = cards[:limit] if limit else cards
+    with _BOARD_LOCK:
+        _BOARD_CACHE[key] = (revision, cards)
+    return list(cards)
 
 
 def next_games(sport: str = "nfl", count: int = 5, days: int = 14,
@@ -410,6 +466,14 @@ def best_pair(game_id: int, market: str, side: str, opponent: str,
         line_match = "ABS(a.line + b.line) < 0.0001"
     elif market == "total":
         line_match = "ABS(a.line - b.line) < 0.0001"
+    from ..data.odds_client import allowed_books
+    books = allowed_books()
+    book_filter, book_params = "", []
+    if books:
+        book_filter = (" AND LOWER(a.bookmaker) IN ("
+                       + ",".join("?" * len(books)) + ")")
+        book_params = books
+
     rows = db.query(db_path, f"""
         SELECT a.price AS side_price, a.line AS side_line,
                b.price AS opp_price, a.bookmaker
@@ -417,9 +481,9 @@ def best_pair(game_id: int, market: str, side: str, opponent: str,
           ON b.game_id=a.game_id AND b.market=a.market AND b.bookmaker=a.bookmaker
         WHERE a.game_id=? AND a.market=?
           AND LOWER(a.side)=LOWER(?) AND LOWER(b.side)=LOWER(?)
-          AND {line_match}
+          AND {line_match}{book_filter}
         ORDER BY a.price DESC, a.captured_utc DESC
-        LIMIT 1""", (game_id, market, side, opponent))
+        LIMIT 1""", (game_id, market, side, opponent, *book_params))
     return rows[0] if rows else None
 
 
@@ -446,13 +510,14 @@ def line_candidates(card: GameCard, prediction: dict, elo: models.EloSystem,
         # value. Blending toward the price keeps the ranking while stopping
         # those from being sold, and staked, as the best bets on the board.
         raw_prob = model_prob
-        blended = (1 - MARKET_TRUST) * model_prob + MARKET_TRUST * implied
+        trust = conf.market_trust(cfg)
+        blended = (1 - trust) * model_prob + trust * implied
         value = edge(blended, implied)
         if value < threshold:
             return
 
         warnings: list[str] = []
-        if value >= IMPLAUSIBLE_EDGE:
+        if raw_prob - implied >= conf.max_raw_edge(cfg):
             warnings.append(
                 f"Model is {abs(blended - implied):.0%} away from the market. "
                 "That usually means information the model cannot see.")
@@ -496,8 +561,13 @@ def line_candidates(card: GameCard, prediction: dict, elo: models.EloSystem,
 
 
 def _history_key(abbrev: str, sport: str) -> str:
-    """Abbreviation as the history frame and the Elo table spell it."""
-    return h2h_mod.to_nflverse(abbrev) if sport == "nfl" else (abbrev or "").upper()
+    """Abbreviation as the history frame and the Elo table spell it.
+
+    The store normalises every row to ESPN spelling, Elo trains on that same
+    frame, and the board's scoring-rate keys are those same labels, so a lookup
+    must normalise to ESPN too - the old nflverse translation meant the Rams
+    and Commanders never matched anything."""
+    return h2h_mod.to_espn(abbrev) if sport == "nfl" else (abbrev or "").upper()
 
 
 def h2h_note(card: GameCard, team: str) -> str:
@@ -595,6 +665,11 @@ def deep_matchup(card: GameCard, seasons: list[int] | None = None,
 def _prop_book(card: GameCard, fetch_prices: bool):
     """(PropBook | None, explanatory note). Never raises on a pricing failure."""
     from ..data.props_odds import OddsAPIError, PropBook, PropsOddsClient
+    if card.started:
+        # Books keep quoting props in-play, and those live numbers read as
+        # enormous edges to a model that does not see the score. Neither a live
+        # fetch nor a stale cache belongs in a pregame read.
+        return None, "Game already started - in-play prop prices are not modelled."
     try:
         client = PropsOddsClient(card.sport)
         event_id = client.find_event_id(card.home_name or card.home,

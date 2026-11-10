@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Pricing{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/account.css') }}">{% endblock %}
+
+{% macro mark(on, text=None) -%}
+  {%- if text -%}<span class="rate-text">{{ text }}</span>
+  {%- elif on -%}<svg class="rate-yes" viewBox="0 0 16 16" fill="none" role="img" aria-label="Included"><path d="m3.5 8.4 2.9 2.9 6.1-6.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  {%- else -%}<span class="rate-no" aria-label="Not included"></span>{%- endif -%}
+{%- endmacro %}
+
+{% macro price(code, interval) -%}
+  {%- set amount = prices[code][interval] -%}
+  <span class="price-line {{ interval }}">
+    {%- if amount -%}
+      <strong>${{ '%g'|format(amount) if amount == amount|int else '%.2f'|format(amount) }}</strong>
+      <span>{{ 'a month' if interval == 'monthly' else 'a year' }}</span>
+    {%- else -%}
+      <strong>$0</strong><span>always</span>
+    {%- endif -%}
+  </span>
+{%- endmacro %}
+
+{% macro action(code, interval) -%}
+  <div class="plan-action {{ interval }}">
+  {%- if code == 'free' -%}
+    {%- if user -%}<span class="plan-current">{{ 'Your plan' if user_plan == 'free' else 'Included' }}</span>
+    {%- else -%}<a class="button ghost" href="{{ url_for('accounts.signup') }}">Start free</a>{%- endif -%}
+  {%- elif user and user_plan == code -%}
+    <span class="plan-current">Your plan</span>
+  {%- else -%}
+    <form method="post" action="{{ url_for('billing.checkout') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="plan" value="{{ code }}">
+      <input type="hidden" name="interval" value="{{ interval }}">
+      <button class="button {{ 'primary' if code == 'pro' else '' }}" type="submit">
+        {{ 'Start a 7 day trial' if interval == 'yearly' else 'Choose ' ~ prices[code].name }}
+      </button>
+    </form>
+  {%- endif -%}
+  </div>
+{%- endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1 class="page-title">Pricing</h1>
+    <p class="lede">Every pick the model makes is graded in public, the losses as well as the wins. Read the record first, then decide what it is worth to you.</p>
+  </div>
+</div>
+
+{% if record and record.decisions %}
+<section class="proof" aria-label="The graded record" data-stagger>
+  <div class="proof-figure" data-reveal="board"><span>Won</span><strong data-count>{{ record.wins }}</strong></div>
+  <div class="proof-figure" data-reveal="board"><span>Lost</span><strong data-count>{{ record.losses }}</strong></div>
+  <div class="proof-figure" data-reveal="board"><span>Hit rate</span><strong>{{ '%.0f%%'|format(record.hit_rate * 100) }}</strong></div>
+  <div class="proof-figure" data-reveal="board"><span>Units</span>
+    <strong class="{{ 'positive' if record.units >= 0 else 'negative' }}">{{ record.units|signed('%+.1f', 'u') }}</strong></div>
+  <p class="proof-note">Every model pick since the first one, graded when its game ended. Nothing is taken out. <a href="{{ url_for('performance') }}">Read every result</a></p>
+</section>
+{% endif %}
+
+{% if not payments_ready %}
+  <p class="notice" role="status">Payments are not switched on yet. The plans below show what each one includes, and nothing can be charged.</p>
+{% endif %}
+
+<section class="rate-card" aria-labelledby="rateTitle">
+  <div class="rate-head">
+    <h2 id="rateTitle">Pick a plan</h2>
+    <fieldset class="interval-switch">
+      <legend class="visually-hidden">How often to pay</legend>
+      <input type="radio" name="interval-view" id="payMonthly" checked>
+      <label for="payMonthly">Monthly</label>
+      <input type="radio" name="interval-view" id="payYearly">
+      <label for="payYearly">Yearly <small>7 day trial</small></label>
+    </fieldset>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table rate-table">
+      <thead>
+        <tr>
+          <th scope="col" class="rate-feature-head">What you get</th>
+          {% for code in ['free', 'pro', 'sharp'] %}
+          <th scope="col" class="plan-col plan-{{ code }} {{ 'is-current' if user_plan == code }}">
+            <b class="plan-name">{{ prices[code].name }}</b>
+            {{ price(code, 'monthly') }}{{ price(code, 'yearly') }}
+            {{ action(code, 'monthly') }}{{ action(code, 'yearly') }}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">The graded record, every result</th><td>{{ mark(true) }}</td><td>{{ mark(true) }}</td><td>{{ mark(true) }}</td></tr>
+        <tr><th scope="row">Live scores on open picks</th><td>{{ mark(true) }}</td><td>{{ mark(true) }}</td><td>{{ mark(true) }}</td></tr>
+        <tr class="{{ 'is-wanted' if want == 'all_picks' }}"><th scope="row">Model picks</th><td>{{ mark(true, '2 a day per league') }}</td><td>{{ mark(true, 'All of them') }}</td><td>{{ mark(true, 'All of them') }}</td></tr>
+        <tr class="{{ 'is-wanted' if want == 'hit_rates' }}"><th scope="row">Hit rate grid<small>Last 5, 10 and 20, season, and head to head</small></th><td>{{ mark(false) }}</td><td>{{ mark(true) }}</td><td>{{ mark(true) }}</td></tr>
+        <tr class="{{ 'is-wanted' if want == 'line_shopping' }}"><th scope="row">Line shopping<small>Best price across your books</small></th><td>{{ mark(false) }}</td><td>{{ mark(true) }}</td><td>{{ mark(true) }}</td></tr>
+        <tr class="{{ 'is-wanted' if want == 'alerts' }}"><th scope="row">Alerts when the model posts a pick</th><td>{{ mark(false) }}</td><td>{{ mark(true) }}</td><td>{{ mark(true) }}</td></tr>
+        <tr class="{{ 'is-wanted' if want == 'ev' }}"><th scope="row">Positive EV and fair odds<small>The price with the book’s margin taken out</small></th><td>{{ mark(false) }}</td><td>{{ mark(false) }}</td><td>{{ mark(true) }}</td></tr>
+        <tr class="{{ 'is-wanted' if want == 'line_movement' }}"><th scope="row">Line movement</th><td>{{ mark(false) }}</td><td>{{ mark(false) }}</td><td>{{ mark(true) }}</td></tr>
+        <tr class="{{ 'is-wanted' if want == 'parlays' }}"><th scope="row">Parlay builder</th><td>{{ mark(false) }}</td><td>{{ mark(false) }}</td><td>{{ mark(true) }}</td></tr>
+        <tr class="{{ 'is-wanted' if want == 'export' }}"><th scope="row">Export your data</th><td>{{ mark(false) }}</td><td>{{ mark(false) }}</td><td>{{ mark(true) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="rate-note">Prices in US dollars. Yearly plans start with a 7 day trial and are charged when it ends. Cancel any time from your account.</p>
+</section>
+
+<aside class="fine-print">
+  <p>For entertainment and information. No guarantee of profit. Past results do not predict future results.</p>
+  <p>You must be 19 or older. If betting stops being fun, call ConnexOntario at 1 866 531 2600, or 1 800 GAMBLER in the United States.</p>
+</aside>
+{% endblock %}

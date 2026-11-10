@@ -1,26 +1,105 @@
 {% extends "base.html" %}
-{% block title %}Edgeboard · Settings{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/research.css') }}">{% endblock %}
+{% block title %}Settings{% endblock %}
 {% block content %}
-<div class="eyebrow">System</div><h1>Settings</h1><p class="lede">Tune what qualifies as an edge and choose which leagues appear on the desk.</p>
-<form method="post" class="section" data-loading>
+<div class="page-head">
+  <div class="page-head-text">
+    <h1 class="page-title">Settings</h1>
+    <p class="lede">Decide what counts as an edge, which leagues show up, and what the model is allowed to commit on its own.</p>
+  </div>
+</div>
+
+<form method="post" data-loading>
   <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
   <div class="settings-grid">
-    <section class="settings-panel"><div class="eyebrow">Model thresholds</div><h2>What makes the board</h2>
-      <div class="field" style="margin:18px 0"><label>Minimum edge</label><input type="number" name="edge_target" min="0.001" max="1" step="0.005" value="{{ config.edge.target }}"><p class="note">A 0.03 threshold means the model must beat the vig-free market probability by 3 percentage points.</p></div>
-      <div class="field"><label>Edge that maps to full confidence</label><input type="number" name="max_edge_display" min="0.001" max="1" step="0.01" value="{{ config.edge.max_edge_display }}"></div>
+
+    <section class="settings-panel" aria-labelledby="edge-heading">
+      <div>
+        <h2 id="edge-heading">What counts as an edge</h2>
+        <p class="panel-intro">A line only reaches the board when the model beats the book by at least this much.</p>
+      </div>
+      <div class="field">
+        <label for="edge_target">Minimum edge</label>
+        <input type="number" id="edge_target" name="edge_target" min="0.001" max="1" step="0.005" value="{{ config.edge.target }}">
+        <p class="hint">0.03 means the model has to beat the book’s fair probability by 3 points.</p>
+      </div>
+      <div class="field">
+        <label for="max_edge_display">Edge that reads as full confidence</label>
+        <input type="number" id="max_edge_display" name="max_edge_display" min="0.001" max="1" step="0.01" value="{{ config.edge.max_edge_display }}">
+        <p class="hint">An edge this large or larger scores 10 out of 10.</p>
+      </div>
     </section>
-    <section class="settings-panel"><div class="eyebrow">Leagues</div><h2>What shows up</h2>
-      {% for code,item in registry.items() %}<label class="check-row"><span><b>{{ item.name }}</b><small style="display:block;color:#6d6a66">{{ item.odds_key }}</small></span><input type="checkbox" name="sport_{{ code }}" {{ 'checked' if config.sports.get(code,{}).enabled }}></label>{% endfor %}
+
+    <section class="settings-panel" aria-labelledby="money-heading">
+      <div>
+        <h2 id="money-heading">Money</h2>
+        <p class="panel-intro">The model stakes in units. This turns them into dollars wherever a record is shown.</p>
+      </div>
+      <div class="field">
+        <label for="dollars_per_unit">Dollars per unit</label>
+        <input type="number" id="dollars_per_unit" name="dollars_per_unit" min="0" max="100000" step="1" value="{{ config.units.dollars_per_unit if config.units else 0 }}">
+        <p class="hint">For display only. It never changes a pick, and 0 hides the dollar figures.</p>
+      </div>
     </section>
-    <section class="settings-panel"><div class="eyebrow">Automatic selection</div><h2>What enters Model Picks</h2>
-      <label class="check-row"><span><b>Enable model picks</b><small style="display:block;color:#6d6a66">Qualifying bets go straight into the ledger.</small></span><input type="checkbox" name="auto_enabled" {{ 'checked' if config.auto_pick.enabled }}></label>
-      <div class="field" style="margin-top:14px"><label>Minimum confidence (1–10)</label><input type="number" name="auto_min_confidence" min="1" max="10" value="{{ config.auto_pick.min_confidence }}"></div>
-      <div class="field"><label>Minimum edge</label><input type="number" name="auto_min_edge" min="0" max="1" step="0.005" value="{{ config.auto_pick.min_edge }}"></div>
-      <div class="field"><label>Minimum prior meetings</label><input type="number" name="auto_min_backing_games" min="0" max="20" value="{{ config.auto_pick.min_backing_games }}"></div>
-      <div class="field"><label>Minimum historical hit rate (optional)</label><input type="number" name="auto_min_backing_rate" min="0" max="1" step="0.05" value="{{ config.auto_pick.min_backing_rate if config.auto_pick.min_backing_rate is not none else '' }}"></div>
-      <div class="field"><label>Maximum picks per day</label><input type="number" name="auto_max_per_day" min="1" max="20" value="{{ config.auto_pick.max_per_day }}"></div>
+
+    <section class="settings-panel" aria-labelledby="leagues-heading">
+      <div>
+        <h2 id="leagues-heading">Leagues</h2>
+        <p class="panel-intro">Switched on leagues get games, prices and model picks. Keep at least one on.</p>
+      </div>
+      <div>
+        {% for code, item in registry.items() %}
+        <label class="toggle-row" for="sport_{{ code }}">
+          <span><b>{{ item.name }}</b><small>{{ 'Showing' if config.sports.get(code, {}).enabled else 'Hidden' }}</small></span>
+          <input class="switch" type="checkbox" role="switch" id="sport_{{ code }}" name="sport_{{ code }}" {{ 'checked' if config.sports.get(code, {}).enabled }}>
+        </label>
+        {% endfor %}
+      </div>
     </section>
+
+    <section class="settings-panel" aria-labelledby="auto-heading">
+      <div>
+        <h2 id="auto-heading">Model picks</h2>
+        <p class="panel-intro">What the model may commit to the record by itself, every hour while the dashboard runs.</p>
+      </div>
+      <label class="toggle-row" for="auto_enabled">
+        <span><b>Let the model commit picks</b><small>Bets that pass every rule below go straight into the record.</small></span>
+        <input class="switch" type="checkbox" role="switch" id="auto_enabled" name="auto_enabled" {{ 'checked' if config.auto_pick.enabled }}>
+      </label>
+      <div class="field-pair">
+        <div class="field">
+          <label for="auto_min_confidence">Minimum confidence</label>
+          <input type="number" id="auto_min_confidence" name="auto_min_confidence" min="1" max="10" value="{{ config.auto_pick.min_confidence }}">
+          <p class="hint">From 1 to 10.</p>
+        </div>
+        <div class="field">
+          <label for="auto_min_edge">Minimum edge</label>
+          <input type="number" id="auto_min_edge" name="auto_min_edge" min="0" max="1" step="0.005" value="{{ config.auto_pick.min_edge }}">
+          <p class="hint">0.04 is 4 points.</p>
+        </div>
+        <div class="field">
+          <label for="auto_min_backing_games">Prior meetings needed</label>
+          <input type="number" id="auto_min_backing_games" name="auto_min_backing_games" min="0" max="20" value="{{ config.auto_pick.min_backing_games }}">
+          <p class="hint">0 allows a first meeting.</p>
+        </div>
+        <div class="field">
+          <label for="auto_max_per_day">Most picks per day</label>
+          <input type="number" id="auto_max_per_day" name="auto_max_per_day" min="1" max="20" value="{{ config.auto_pick.max_per_day }}">
+          <p class="hint">For each league.</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="auto_min_backing_rate">Lowest hit rate in those meetings</label>
+        <input type="number" id="auto_min_backing_rate" name="auto_min_backing_rate" min="0" max="1" step="0.05" placeholder="Any" value="{{ config.auto_pick.min_backing_rate if config.auto_pick.min_backing_rate is not none else '' }}">
+        <p class="hint">Optional. 0.6 means the exact bet cashed in at least 60% of prior meetings. Leave it empty to skip the check.</p>
+      </div>
+    </section>
+
   </div>
-  <div style="margin-top:14px"><button class="button primary" type="submit">Save settings</button></div>
+
+  <div class="save-bar">
+    <p>Saved to config/settings.yaml. Changes apply as soon as you save.</p>
+    <button class="button primary" type="submit">Save settings</button>
+  </div>
 </form>
 {% endblock %}

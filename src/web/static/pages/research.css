@@ -1,0 +1,415 @@
+/* ==========================================================================
+   Research pages: players, a player, teams, a team, settings
+   --------------------------------------------------------------------------
+   Built on the board tokens in app.css. Each page carries one motion idea of
+   its own: roster panels are dealt onto the table, a player's portrait opens
+   like a spotlight, club tiles land as a hand, settings rise in order.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Shared pieces
+   -------------------------------------------------------------------------- */
+
+.filter-note {
+  margin: -6px 0 22px;
+  color: var(--chalk);
+  font-size: 0.88rem;
+}
+.filter-note b { color: var(--ink); font-weight: 650; }
+
+/* The hit chance as a scoreboard figure, with a thin meter underneath. */
+.chance {
+  display: block;
+  color: var(--ink);
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-stretch: var(--display-width);
+  line-height: 1;
+}
+.chance-meter {
+  display: block;
+  width: 72px;
+  height: 3px;
+  margin-top: 7px;
+  border-radius: 99px;
+  background: var(--seam-soft);
+  overflow: hidden;
+}
+.chance-meter b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--amber);
+  transform-origin: left center;
+  transform: scaleX(var(--p, 0));
+}
+.num .chance-meter { margin-left: auto; }
+
+.form-run { color: var(--ink); font-weight: 600; font-stretch: 90%; white-space: nowrap; }
+.form-none { color: var(--faint); font-size: 0.82rem; font-style: italic; }
+
+.price-line { display: inline-flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.price-line .edge { font-size: 0.82rem; font-weight: 650; }
+
+.pill.red { color: var(--loss); background: var(--loss-bg); border-color: transparent; }
+
+.page-actions form { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+/* --------------------------------------------------------------------------
+   Players: roster panels for selected clubs
+   -------------------------------------------------------------------------- */
+
+.roster-stack { display: grid; gap: 16px; }
+
+.roster-panel {
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+  overflow: hidden;
+}
+.roster-panel > header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--seam-soft);
+  background: var(--pit);
+}
+.roster-panel > header h2 { margin: 0; font-size: 1.5rem; }
+.roster-panel > header span { color: var(--chalk); font-size: 0.85rem; }
+
+.roster-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(190px, 1fr) minmax(130px, 0.7fr) 92px;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--seam-soft);
+  transition: background-color 140ms ease;
+}
+.roster-row:first-child { border-top: 0; }
+
+.roster-who > span { display: grid; min-width: 0; }
+.roster-who small,
+.roster-bet small,
+.roster-form small {
+  color: var(--chalk);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.roster-bet, .roster-form { display: grid; gap: 2px; min-width: 0; }
+.roster-bet b { font-weight: 650; }
+.roster-chance { text-align: right; }
+.roster-chance .chance-meter { margin-left: auto; }
+.roster-chance small { display: block; margin-top: 5px; color: var(--amber); font-size: 0.8rem; font-weight: 700; }
+.roster-chance small.unpriced { color: var(--faint); font-weight: 500; }
+
+@media (hover: hover) and (pointer: fine) {
+  .roster-row:hover { background: var(--raised-soft); box-shadow: inset 3px 0 0 var(--amber); }
+  .roster-row:hover .player-link b { color: var(--amber); }
+}
+
+.panel-state { display: grid; gap: 4px; padding: 22px 18px; color: var(--chalk); }
+.panel-state b { color: var(--ink); font-weight: 650; }
+
+.building .progress { max-width: 360px; margin: 18px auto 0; }
+
+/* --------------------------------------------------------------------------
+   Player and team heroes
+   -------------------------------------------------------------------------- */
+
+.profile-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 26px;
+  padding: 26px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background:
+    linear-gradient(90deg, var(--raised-soft), transparent 46%),
+    var(--rail);
+}
+.profile-hero h1 { margin: 0 0 12px; }
+
+.portrait { position: relative; display: inline-flex; }
+.portrait .badge {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--seam);
+  border-radius: 50%;
+  background: var(--pit);
+}
+.portrait .badge .crest { width: 24px; height: 24px; }
+
+.crest.hero-crest { width: 84px; height: 84px; }
+.avatar-fallback.lg.hero-crest { width: 84px; height: 84px; }
+
+.profile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--chalk);
+}
+.profile-meta li { display: inline-flex; align-items: center; gap: 7px; }
+.profile-meta b { color: var(--ink); font-weight: 650; }
+.profile-meta a { color: var(--ink); font-weight: 650; text-decoration: underline; text-decoration-color: var(--seam); text-underline-offset: 4px; transition: text-decoration-color 160ms ease, color 160ms ease; }
+@media (hover: hover) and (pointer: fine) {
+  .profile-meta a:hover { color: var(--amber); text-decoration-color: var(--amber); }
+}
+
+/* The next fixture, as a ticket you can open. */
+.next-ticket {
+  display: grid;
+  gap: 4px;
+  min-width: 210px;
+  padding: 14px 18px;
+  border: 1px solid var(--seam);
+  border-radius: 10px;
+  background: var(--pit);
+  transition: border-color 160ms ease, transform 160ms var(--ease-out);
+}
+.next-ticket small { color: var(--chalk); font-size: 0.78rem; font-weight: 600; }
+.next-ticket b { font-size: 1.3rem; font-weight: 800; font-stretch: 74%; line-height: 1.05; }
+.next-ticket span { color: var(--amber); font-size: 0.85rem; font-weight: 650; }
+.next-ticket:active { transform: scale(0.98); }
+@media (hover: hover) and (pointer: fine) {
+  a.next-ticket:hover { border-color: var(--amber); }
+}
+
+/* The portrait opens like a spotlight finding its player. */
+@keyframes spotlight {
+  from { opacity: 0; clip-path: circle(28% at 50% 45%); }
+  to { opacity: 1; clip-path: circle(75% at 50% 50%); }
+}
+@keyframes crest-in {
+  from { opacity: 0; transform: scale(0.95) rotate(-4deg); }
+  to { opacity: 1; transform: none; }
+}
+html.js .portrait { animation: spotlight 820ms var(--ease-out) both; }
+html.js .profile-hero .hero-crest { animation: crest-in 700ms var(--ease-out) both; }
+
+/* --------------------------------------------------------------------------
+   Bet cards (player and team pages)
+   -------------------------------------------------------------------------- */
+
+.bet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.bet-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 18px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+}
+.bet-card.is-unpriced { border-style: dashed; border-color: var(--seam); }
+.bet-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.bet-card h3 { margin: 0; font-size: 1.12rem; }
+.bet-card h3 small { display: block; margin-top: 3px; color: var(--chalk); font-size: 0.8rem; font-weight: 500; font-stretch: 100%; }
+.bet-card .chance { font-size: 2rem; text-align: right; }
+
+.bet-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--seam-soft);
+}
+.bet-facts div { min-width: 0; }
+.bet-facts dt { color: var(--chalk); font-size: 0.76rem; font-weight: 600; }
+.bet-facts dd { margin: 2px 0 0; font-weight: 650; }
+.bet-facts .price { color: var(--amber); }
+
+.bet-evidence { margin: 0; color: var(--chalk); font-size: 0.86rem; line-height: 1.5; }
+.bet-card .note { margin: 0; }
+
+/* --------------------------------------------------------------------------
+   Teams: club tiles
+   -------------------------------------------------------------------------- */
+
+.club-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.club-tile {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+.club-tile:active { transform: scale(0.98); }
+.club-tile > header { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.club-tile > header .crest { width: 40px; height: 40px; }
+.club-tile > header .avatar-fallback { width: 40px; height: 40px; }
+.club-tile h3 { margin: 0; font-size: 1.05rem; line-height: 1.15; }
+.club-tile h3 small { display: block; color: var(--faint); font-size: 0.76rem; font-weight: 600; font-stretch: 100%; }
+
+.club-next { display: grid; gap: 2px; align-content: start; }
+.club-next b { font-size: 1.15rem; font-weight: 780; font-stretch: 76%; }
+.club-next span { color: var(--chalk); font-size: 0.85rem; }
+
+.club-best {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--seam-soft);
+  font-size: 0.88rem;
+}
+.club-best b { font-weight: 650; }
+.club-best .price-line { color: var(--amber); font-weight: 700; }
+.club-best.is-none { color: var(--faint); }
+
+.club-tile.is-idle { background: transparent; }
+.club-tile.is-idle .club-next b { color: var(--chalk); }
+
+@media (hover: hover) and (pointer: fine) {
+  .club-tile:hover { border-color: var(--amber); background: var(--raised-soft); }
+  .club-tile:hover h3 { color: var(--amber); }
+}
+
+/* --------------------------------------------------------------------------
+   Settings
+   -------------------------------------------------------------------------- */
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+}
+.settings-panel h2 { margin: 0; font-size: 1.5rem; }
+.settings-panel .panel-intro { margin: 6px 0 0; color: var(--chalk); font-size: 0.9rem; }
+.settings-panel .field input { width: 100%; }
+.hint { margin: 0; color: var(--faint); font-size: 0.82rem; line-height: 1.45; }
+
+.field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--seam-soft);
+  cursor: pointer;
+}
+.toggle-row:first-of-type { border-top: 0; padding-top: 0; }
+.toggle-row b { font-weight: 650; }
+.toggle-row small { display: block; color: var(--chalk); font-size: 0.82rem; }
+
+/* A switch, not a tick box: these turn whole features on and off. */
+input.switch {
+  flex: none;
+  position: relative;
+  width: 42px;
+  height: 24px;
+  margin: 0;
+  border: 1px solid var(--seam);
+  border-radius: 99px;
+  background: var(--pit);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+input.switch::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--chalk);
+  transition: transform 260ms var(--ease-out), background-color 200ms ease;
+}
+input.switch:checked { background: var(--amber); border-color: var(--amber); }
+input.switch:checked::before { transform: translateX(18px); background: var(--pit); }
+input.switch:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+.save-bar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 12px 12px 12px 18px;
+  border: 1px solid var(--seam);
+  border-radius: 12px;
+  background: rgba(18, 36, 58, 0.97);
+  box-shadow: 0 18px 50px rgba(2, 8, 16, 0.45);
+}
+.save-bar p { margin: 0; color: var(--chalk); font-size: 0.88rem; }
+
+/* --------------------------------------------------------------------------
+   Small screens
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .roster-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; }
+  .roster-bet { grid-column: 1; }
+  .roster-form { grid-column: 1; }
+  .roster-chance { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
+
+  .profile-hero { grid-template-columns: auto minmax(0, 1fr); padding: 20px; gap: 18px; }
+  .profile-hero .next-ticket { grid-column: 1 / -1; }
+}
+
+@media (max-width: 560px) {
+  .profile-hero { grid-template-columns: 1fr; }
+  .crest.hero-crest { width: 64px; height: 64px; }
+  .bet-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .field-pair { grid-template-columns: 1fr; }
+  .save-bar { flex-direction: column; align-items: stretch; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.js .portrait,
+  html.js .profile-hero .hero-crest { animation: profile-fade 300ms ease both; }
+  input.switch::before { transition: background-color 200ms ease; }
+  .club-tile:active, .next-ticket:active { transform: none; }
+}
+@keyframes profile-fade { from { opacity: 0; } to { opacity: 1; } }

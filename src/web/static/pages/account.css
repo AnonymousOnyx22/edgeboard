@@ -1,0 +1,458 @@
+/* ==========================================================================
+   Accounts, pricing, the age gate and paywalls.
+   Loaded by the account pages, and site wide in service mode (the rail's
+   account block, the age gate and paywalls appear on every page then).
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ proof */
+.proof {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 28px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--pit);
+  overflow: hidden;
+}
+.proof-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px 16px;
+  border-left: 1px solid var(--seam-soft);
+}
+.proof-figure:first-child { border-left: 0; }
+.proof-figure span { color: var(--chalk); font-size: 0.8rem; font-weight: 600; }
+.proof-figure strong {
+  font-size: clamp(1.9rem, 1.4rem + 1.4vw, 2.6rem);
+  font-weight: 800;
+  font-stretch: var(--display-width);
+  line-height: 0.95;
+}
+.proof-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 12px 20px;
+  border-top: 1px solid var(--seam-soft);
+  color: var(--chalk);
+  font-size: 0.88rem;
+}
+.proof-note a { color: var(--amber); font-weight: 600; }
+
+.notice {
+  margin: 0 0 22px;
+  padding: 12px 16px;
+  border: 1px solid var(--seam-soft);
+  border-left: 3px solid var(--amber);
+  border-radius: 10px;
+  background: var(--rail);
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+/* -------------------------------------------------------------- rate card
+   The plans read as a board: features down the side, plans across the top,
+   the price lit in amber. Pro is the column the eye lands on. */
+.rate-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.rate-head h2 { margin: 0; }
+
+.interval-switch {
+  display: inline-flex;
+  gap: 3px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--seam-soft);
+  border-radius: 11px;
+  background: var(--pit);
+}
+.interval-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.interval-switch label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 15px;
+  border-radius: 8px;
+  color: var(--chalk);
+  font-weight: 700;
+  font-stretch: 85%;
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease, transform 140ms var(--ease-out);
+}
+.interval-switch label small { color: var(--amber); font-size: 0.74rem; font-weight: 650; font-stretch: 100%; }
+.interval-switch label:active { transform: scale(0.97); }
+.interval-switch input:checked + label {
+  color: var(--ink);
+  background: var(--raised);
+  box-shadow: inset 0 -2px 0 var(--amber);
+}
+.interval-switch input:focus-visible + label { outline: 2px solid var(--amber); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .interval-switch label:hover { color: var(--ink); }
+}
+
+.rate-table { min-width: 660px; }
+.rate-table thead th {
+  padding: 18px 16px 16px;
+  vertical-align: top;
+  background: var(--pit);
+  color: var(--ink);
+  font-size: 0.92rem;
+  white-space: normal;
+}
+.rate-table .rate-feature-head { color: var(--chalk); font-weight: 600; vertical-align: bottom; }
+.plan-col { width: 23%; }
+.plan-name {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-stretch: 72%;
+}
+.price-line { display: flex; align-items: baseline; gap: 6px; margin: 6px 0 14px; }
+.price-line strong {
+  color: var(--amber);
+  font-size: 2rem;
+  font-weight: 800;
+  font-stretch: var(--display-width);
+  line-height: 1;
+}
+.price-line span { color: var(--chalk); font-size: 0.82rem; font-weight: 500; }
+.plan-free .price-line strong { color: var(--ink); }
+
+.plan-action form { margin: 0; }
+.plan-action .button { width: 100%; }
+.plan-current {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  color: var(--win);
+  font-weight: 650;
+}
+
+/* Yearly and monthly swap in place where :has() exists; without it both
+   prices show, which still reads correctly. */
+@supports selector(:has(*)) {
+  .rate-card .yearly { display: none; }
+  .rate-card:has(#payYearly:checked) .yearly { display: flex; }
+  .rate-card:has(#payYearly:checked) .plan-action.yearly { display: block; }
+  .rate-card:has(#payYearly:checked) .monthly { display: none; }
+  .rate-card .price-line { animation: price-in 420ms var(--ease-out); }
+}
+@keyframes price-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.rate-table tbody th {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--seam-soft);
+  color: var(--ink);
+  font-weight: 550;
+  text-align: left;
+}
+.rate-table tbody th small { display: block; margin-top: 2px; color: var(--chalk); font-size: 0.8rem; font-weight: 450; }
+.rate-table tbody td { text-align: left; }
+.rate-table tbody tr:last-child th { border-bottom: 0; }
+
+.rate-table .plan-pro,
+.rate-table tbody td:nth-child(3) { background: rgba(255, 178, 62, 0.045); }
+.rate-table thead .plan-pro { box-shadow: inset 0 2px 0 var(--amber); }
+.rate-table .is-current { box-shadow: inset 0 2px 0 var(--win); }
+
+.rate-yes { width: 18px; height: 18px; color: var(--amber); }
+.rate-no {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--seam);
+  vertical-align: middle;
+}
+.rate-text { color: var(--ink); font-weight: 600; font-size: 0.88rem; }
+.rate-table tr.is-wanted th,
+.rate-table tr.is-wanted td { background: var(--amber-bg); }
+.rate-table tr.is-wanted th { box-shadow: inset 3px 0 0 var(--amber); }
+
+.rate-note { margin: 12px 0 0; color: var(--chalk); font-size: 0.86rem; }
+
+.fine-print {
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top: 1px solid var(--seam-soft);
+  color: var(--faint);
+  font-size: 0.82rem;
+}
+.fine-print p { margin: 0 0 4px; max-width: 72ch; }
+
+/* ------------------------------------------------------------------- auth */
+.auth {
+  display: grid;
+  grid-template-columns: minmax(0, 440px) minmax(0, 340px);
+  gap: 28px;
+  align-items: start;
+  padding-top: 12px;
+}
+.auth-single { grid-template-columns: minmax(0, 440px); }
+
+.auth-panel {
+  padding: 28px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+}
+.auth-panel h1 { font-size: clamp(2.1rem, 1.6rem + 2vw, 2.9rem); }
+.auth-panel .lede { margin-bottom: 22px; }
+
+.auth-form { display: grid; gap: 16px; }
+.auth-form input:not([type="checkbox"]) { width: 100%; }
+.field-hint { margin: 0; color: var(--faint); font-size: 0.8rem; }
+.field-error, .form-error { margin: 0; color: var(--loss); font-size: 0.84rem; font-weight: 600; }
+.form-error {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: 9px;
+  background: var(--loss-bg);
+}
+.has-error input { border-color: var(--loss); }
+
+.age-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--seam);
+  border-radius: 9px;
+  background: var(--pit);
+  cursor: pointer;
+  font-weight: 600;
+}
+.age-check input { width: 18px; height: 18px; accent-color: var(--amber); }
+.age-check.has-error { border-color: var(--loss); }
+
+.auth-submit { width: 100%; min-height: 46px; font-size: 1rem; }
+.auth-switch { margin: 2px 0 0; color: var(--chalk); font-size: 0.9rem; text-align: center; }
+.auth-switch a, .auth-more { color: var(--amber); font-weight: 650; }
+
+.auth-aside { padding: 8px 4px; }
+.auth-aside h2 { font-size: 1.4rem; }
+.auth-list { margin: 12px 0 18px; padding: 0; list-style: none; }
+.auth-list li {
+  position: relative;
+  padding: 9px 0 9px 22px;
+  border-bottom: 1px solid var(--seam-soft);
+  color: var(--ink);
+}
+.auth-list li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 17px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--amber);
+}
+.auth-fine { margin-top: 18px; color: var(--faint); font-size: 0.8rem; }
+
+@media (hover: hover) and (pointer: fine) {
+  .auth-switch a:hover, .auth-more:hover, .proof-note a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+/* ---------------------------------------------------------------- account */
+.account-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.plan-panel {
+  padding: 24px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+  box-shadow: inset 0 3px 0 var(--seam);
+}
+.plan-panel.plan-pro, .plan-panel.plan-sharp { box-shadow: inset 0 3px 0 var(--amber); }
+.plan-panel-label { color: var(--chalk); font-size: 0.82rem; font-weight: 600; }
+.plan-panel-name {
+  display: block;
+  margin: 4px 0 14px;
+  font-size: 3rem;
+  font-weight: 800;
+  font-stretch: var(--display-width);
+  line-height: 0.95;
+}
+.plan-panel-copy { color: var(--chalk); }
+.plan-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 18px;
+}
+.plan-facts dt { color: var(--chalk); font-size: 0.78rem; font-weight: 600; }
+.plan-facts dd { margin: 3px 0 0; font-weight: 650; }
+.plan-panel-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.plan-panel-actions form { margin: 0; }
+
+.account-side {
+  padding: 24px;
+  border: 1px dashed var(--seam);
+  border-radius: var(--r);
+}
+.account-side h2 { font-size: 1.3rem; }
+.account-side p { color: var(--chalk); }
+
+/* ------------------------------------------------------------ rail block */
+.account-nav {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.account-chip {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--seam-soft);
+  border-radius: 9px;
+  background: var(--rail);
+  transition: border-color 160ms ease;
+}
+.account-chip.active { border-color: var(--amber); }
+.account-plan {
+  justify-self: start;
+  padding: 1px 8px;
+  border-radius: 99px;
+  background: var(--raised);
+  color: var(--chalk);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+.account-plan.plan-pro, .account-plan.plan-sharp { background: var(--amber-bg); color: var(--amber); }
+.account-email {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-nav .button { width: 100%; }
+@media (hover: hover) and (pointer: fine) {
+  .account-chip:hover { border-color: var(--seam); }
+}
+body[data-nav="collapsed"] .account-nav { display: none; }
+
+/* --------------------------------------------------------------- age gate */
+body:has(.age-gate) { overflow: hidden; }
+.age-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(4, 10, 18, 0.86);
+  animation: gate-fade 320ms ease both;
+}
+.age-gate-panel {
+  width: min(460px, 100%);
+  padding: 28px;
+  border: 1px solid var(--seam);
+  border-radius: 14px;
+  background: var(--rail);
+  box-shadow: 0 30px 80px rgba(2, 8, 16, 0.6);
+  animation: gate-rise 460ms var(--ease-out) both;
+}
+.age-gate-panel h2 { font-size: 2rem; }
+.age-gate-panel p { color: var(--chalk); }
+.age-gate-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 16px; }
+.age-gate-actions .button.primary { flex: 1; }
+.age-gate-help { margin: 0; font-size: 0.82rem; }
+@keyframes gate-fade { from { opacity: 0; } }
+@keyframes gate-rise { from { opacity: 0; transform: translateY(14px) scale(0.98); } }
+
+/* ---------------------------------------------------------------- paywall
+   A locked panel. With a teaser, the real content sits faded and blurred
+   behind it, so the visitor can see the shape of what they would unlock. */
+.paywall {
+  position: relative;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+  overflow: hidden;
+}
+.paywall-teaser {
+  max-height: 320px;
+  overflow: hidden;
+  opacity: 0.35;
+  filter: blur(3px);
+  pointer-events: none;
+  user-select: none;
+  -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent);
+          mask-image: linear-gradient(180deg, #000 30%, transparent);
+}
+.paywall-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  flex-wrap: wrap;
+}
+.paywall.has-teaser .paywall-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(560px, calc(100% - 32px));
+  border: 1px solid var(--seam);
+  border-radius: 12px;
+  background: var(--rail);
+  box-shadow: 0 24px 60px rgba(2, 8, 16, 0.5);
+  transform: translate(-50%, -50%);
+}
+.paywall-lock {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+.paywall-lock svg { width: 18px; height: 18px; }
+.paywall-copy { flex: 1 1 220px; min-width: 0; }
+.paywall-copy h3 { margin-bottom: 2px; }
+.paywall-copy p { margin: 0; color: var(--chalk); font-size: 0.9rem; }
+.paywall-actions { display: flex; align-items: center; gap: 14px; }
+.paywall-login { color: var(--chalk); font-weight: 600; }
+@media (hover: hover) and (pointer: fine) {
+  .paywall-login:hover { color: var(--amber); }
+}
+
+/* ------------------------------------------------------------- responsive */
+@media (max-width: 900px) {
+  .auth, .account-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .proof { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .proof-figure:nth-child(3) { border-left: 0; }
+  .proof-figure:nth-child(n + 3) { border-top: 1px solid var(--seam-soft); }
+  .auth-panel, .plan-panel, .account-side { padding: 20px; }
+  .plan-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .age-gate, .age-gate-panel, .rate-card .price-line { animation: none; }
+}

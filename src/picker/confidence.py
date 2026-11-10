@@ -19,6 +19,24 @@ def edge_target(cfg=None) -> float:
     return float((cfg or get_config())["edge"]["target"])
 
 
+def market_trust(cfg=None) -> float:
+    """Weight on the book's vig-free price when blending it with the model.
+
+    The graded record showed the model calling 64% winners that won 54%,
+    exactly the book's number, so the price gets most of the say.
+    """
+    return float((cfg or get_config())["edge"].get("market_trust", 0.70))
+
+
+def max_raw_edge(cfg=None) -> float:
+    """Raw model-over-market gap past which a bet is skipped, not sold.
+
+    Picks claiming 20%+ before blending went 10-22 for -39% at flat stakes:
+    a gap that wide is information the model cannot see, not value.
+    """
+    return float((cfg or get_config())["edge"].get("max_raw_edge", 0.20))
+
+
 def edge_score(edge, target: float = 0.03) -> float:
     """Map an edge to 0-10, where ``target`` is the full-scale edge."""
     if target <= 0:
@@ -72,6 +90,10 @@ def compute_confidence(edge, model_prob: float, quality: dict | None = None,
 def units_from_confidence(score: float, cfg: dict | None = None) -> float:
     """1u/2u/3u from configurable tiers {units: max_confidence}, sorted asc."""
     settings = cfg or get_config()
+    flat = (settings.get("units") or {}).get("flat")
+    if flat:
+        # Level stakes until the model's probabilities have earned sizing.
+        return float(flat)
     tiers_raw = settings.setdefault("units", {}).get("tiers") or {"1": 5.5, "2": 7.5, "3": 10}
     tiers = sorted(((int(k), float(v)) for k, v in tiers_raw.items()), key=lambda kv: kv[1])
     for units, max_score in tiers:

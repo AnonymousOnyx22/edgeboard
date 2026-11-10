@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% import "_media.html" as media with context %}
+{% block title %}Hit rates{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='pages/props.css') }}">
+<script defer src="{{ url_for('static', filename='pages/props.js') }}"></script>
+{# With nothing to show yet, the page checks back on its own. #}
+{% if not rows and board_building %}<meta http-equiv="refresh" content="4">{% endif %}
+{% endblock %}
+
+{% macro rate_cell(r) -%}
+  {%- if r is none -%}
+    <td class="hr-rate is-pending" title="Reading the full game log"><span class="hr-dot">·</span></td>
+  {%- elif not r.games -%}
+    <td class="hr-rate is-none" title="No games recorded"><span class="hr-dot">·</span></td>
+  {%- else -%}
+    <td class="hr-rate is-{{ r.grade }}"><b>{{ (r.pct * 100)|round|int }}%</b><span>{{ r.text }}</span></td>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro rate_key(r) -%}{{ '%.4f'|format(r.pct) if r is not none and r.games else '-1' }}{%- endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1 class="page-title">Hit rates</h1>
+    <p class="lede">Every line on the board against the player’s own games: the last 5, 10 and 20, this season, and against tonight’s opponent. Sort any column, then open a player for the full log.</p>
+  </div>
+</div>
+
+<nav class="seg-group" aria-label="League">
+  {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
+     href="{{ url_for('hitrates.props', sport=item.code) }}"
+     {% if item.code == sport.code %}aria-current="page"{% endif %}>{{ item.name }}</a>{% endfor %}
+</nav>
+
+{% if rows %}
+<div class="hr-tools" id="hrTools" data-sport="{{ sport.code }}" hidden>
+  <label class="hr-search">
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.3" stroke="currentColor" stroke-width="1.4"/>
+      <path d="m10.3 10.3 3.2 3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </svg>
+    <span class="visually-hidden">Find a player</span>
+    <input type="search" id="hrSearch" placeholder="Find a player" autocomplete="off">
+  </label>
+
+  <div class="hr-toggle" role="group" aria-label="Side">
+    <button type="button" data-side="" aria-pressed="true">Both</button>
+    <button type="button" data-side="over" aria-pressed="false">Over</button>
+    <button type="button" data-side="under" aria-pressed="false">Under</button>
+  </div>
+
+  <label class="hr-select">
+    <span>Team</span>
+    <select id="hrTeam">
+      <option value="">Every team</option>
+      {% for team in teams %}<option value="{{ team }}">{{ team }}</option>{% endfor %}
+    </select>
+  </label>
+
+  <label class="hr-select">
+    <span>Games logged</span>
+    <select id="hrMin">
+      <option value="0">Any</option>
+      <option value="5">5 or more</option>
+      <option value="10">10 or more</option>
+      <option value="20">20 or more</option>
+    </select>
+  </label>
+
+  <label class="check-inline hr-priced">
+    <input type="checkbox" id="hrPriced"> Book lines only
+  </label>
+
+  <p class="hr-count" id="hrCount" aria-live="polite">{{ rows|length }} lines</p>
+
+  <div class="hr-chips" role="group" aria-label="Stat">
+    <button type="button" class="hr-chip" data-stat="" aria-pressed="true">All stats</button>
+    {% for label in stats %}<button type="button" class="hr-chip" data-stat="{{ label }}" aria-pressed="false">{{ label }}</button>{% endfor %}
+  </div>
+</div>
+
+{% if history_building %}
+  <p class="hr-note" id="hrPending" data-refresh="5000">
+    <i aria-hidden="true"></i>Reading full game logs for the 20 game and season columns, {{ ((history_progress or 0) * 100)|round|int }}% done. They fill in on their own.
+  </p>
+{% endif %}
+
+<div class="hr-wrap" data-reveal="fade">
+  <table class="hr-table" id="hrTable">
+    <thead>
+      <tr>
+        <th scope="col" class="hr-player-col"><button type="button" data-sort="player" data-type="text">Player</button></th>
+        <th scope="col"><button type="button" data-sort="stat" data-type="text">Bet</button></th>
+        <th scope="col" class="num"><button type="button" data-sort="line">Line</button></th>
+        <th scope="col" class="num"><button type="button" data-sort="l5">Last 5</button></th>
+        <th scope="col" class="num" aria-sort="descending"><button type="button" data-sort="l10">Last 10</button></th>
+        <th scope="col" class="num"><button type="button" data-sort="l20">Last 20</button></th>
+        <th scope="col" class="num"><button type="button" data-sort="season">Season</button></th>
+        <th scope="col" class="num"><button type="button" data-sort="h2h">Head to head</button></th>
+        <th scope="col" class="num"><button type="button" data-sort="avg">Avg, last 10</button></th>
+        <th scope="col" class="num"><button type="button" data-sort="prob">Model</button></th>
+        <th scope="col" class="num"><button type="button" data-sort="edge">Edge</button></th>
+        <th scope="col"><button type="button" data-sort="opp" data-type="text">Game</button></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      {% set href = url_for('player_detail', sport=row.sport, athlete_id=row.athlete_id, team=row.team) %}
+      <tr data-href="{{ href }}"
+          data-player="{{ row.player|lower }}" data-team="{{ row.team }}"
+          data-stat="{{ row.stat_label }}" data-side="{{ row.side }}"
+          data-priced="{{ 1 if row.priced else 0 }}" data-n="{{ row.games_logged }}"
+          data-line="{{ row.line }}"
+          data-l5="{{ rate_key(row.l5) }}" data-l10="{{ rate_key(row.l10) }}"
+          data-l20="{{ rate_key(row.l20) }}" data-season="{{ rate_key(row.season) }}"
+          data-h2h="{{ rate_key(row.h2h) }}"
+          data-avg="{{ '%.3f'|format(row.avg10) if row.avg10 is not none else '-1' }}"
+          data-prob="{{ '%.4f'|format(row.probability) }}"
+          data-edge="{{ '%.4f'|format(row.edge) if row.edge is not none else '-1' }}"
+          data-opp="{{ row.opponent }}">
+        <th scope="row" class="hr-player-col">
+          <a class="player-link" href="{{ href }}">
+            {{ media.headshot(row.athlete_id, row.player, row.sport, 'sm') }}
+            <span class="hr-who">
+              <b>{{ row.player }}</b>
+              <span class="hr-meta">{{ media.crest(row.team, row.sport, 'sm') }}{{ row.team }} {{ row.position }}{% if row.injury_status %} <em class="hr-injury">{{ row.injury_status|replace('-', ' ')|capitalize }}</em>{% endif %}</span>
+            </span>
+          </a>
+        </th>
+        <td class="hr-bet"><span class="hr-side is-{{ row.side }}">{{ row.side|capitalize }}</span> {{ row.stat_label }}</td>
+        <td class="num hr-line">
+          <b>{{ '%g'|format(row.line) }}</b>
+          {% if row.priced %}<span class="price">{{ row.odds|odds }}</span><span class="hr-book">{{ row.bookmaker|replace('_', ' ')|title }}</span>
+          {% else %}<span class="hr-model-tag" title="No book has posted this line; the number is the model’s own">Model line</span>{% endif %}
+        </td>
+        {{ rate_cell(row.l5) }}
+        {{ rate_cell(row.l10) }}
+        {{ rate_cell(row.l20) }}
+        {{ rate_cell(row.season) }}
+        {{ rate_cell(row.h2h) }}
+        <td class="num">{{ '%.1f'|format(row.avg10) if row.avg10 is not none else '' }}</td>
+        <td class="num">{{ '%.0f%%'|format(row.probability * 100) }}</td>
+        <td class="num {{ 'positive' if (row.edge or 0) > 0 else ('negative' if (row.edge or 0) < 0 else '') }}">{% if row.edge is not none %}{{ (row.edge * 100)|signed('%+.1f', '%') }}{% else %}<span class="hr-dot">·</span>{% endif %}</td>
+        <td class="hr-game"><span>{{ 'vs' if row.at_home else 'at' }} {{ media.crest(row.opponent, row.sport, 'sm') }}{{ row.opponent }}</span><small>{{ row.kickoff|dashless }}</small></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hr-filtered-empty" id="hrEmpty" hidden>No lines match those filters. Clear one to see more.</p>
+</div>
+
+{% elif board_building %}
+  <div class="hr-building">
+    <h3>Reading the {{ sport.name }} board</h3>
+    <p>{{ entry.message or 'Pulling rosters and game logs.' }} This page checks back on its own.</p>
+    <div class="hr-progress"><b style="transform: scaleX({{ '%.3f'|format(entry.progress or 0) }})"></b></div>
+  </div>
+
+{% elif entry and entry.status == 'error' %}
+  <div class="empty">
+    <h3>The {{ sport.name }} board did not build.</h3>
+    <p>{{ entry.message }} It tries again on the next load.</p>
+  </div>
+
+{% else %}
+  <div class="empty">
+    <h3>No {{ sport.name }} lines to rate yet.</h3>
+    <p>{{ (board.note if board and board.note else 'There are no upcoming games with player lines.') }} Fixtures and prices sync on their own every hour while Edgeboard runs.</p>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Make an account{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/account.css') }}">{% endblock %}
+{% block content %}
+<div class="auth">
+  <section class="auth-panel" data-reveal="rise">
+    <h1 class="page-title">Make your account</h1>
+    <p class="lede">Free to start. Move to a paid plan only if the record earns it.</p>
+
+    <form class="auth-form" method="post" action="{{ url_for('accounts.signup') }}" novalidate>
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+
+      <div class="field {{ 'has-error' if errors.email }}">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" required
+               value="{{ email }}" {% if errors.email %}aria-invalid="true" aria-describedby="emailError"{% endif %}>
+        {% if errors.email %}<p class="field-error" id="emailError">{{ errors.email }}</p>{% endif %}
+      </div>
+
+      <div class="field {{ 'has-error' if errors.password }}">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" required
+               minlength="8" aria-describedby="passwordHint{% if errors.password %} passwordError{% endif %}"
+               {% if errors.password %}aria-invalid="true"{% endif %}>
+        <p class="field-hint" id="passwordHint">At least 8 characters.</p>
+        {% if errors.password %}<p class="field-error" id="passwordError">{{ errors.password }}</p>{% endif %}
+      </div>
+
+      <label class="age-check {{ 'has-error' if errors.age }}">
+        <input type="checkbox" name="age" value="yes" required {% if errors.age %}aria-invalid="true" aria-describedby="ageError"{% endif %}>
+        <span>I am 19 or older</span>
+      </label>
+      {% if errors.age %}<p class="field-error" id="ageError">{{ errors.age }}</p>{% endif %}
+
+      <button class="button primary auth-submit" type="submit">Create account</button>
+      <p class="auth-switch">Already have one? <a href="{{ url_for('accounts.login', next=next_url) }}">Log in</a></p>
+    </form>
+  </section>
+
+  <aside class="auth-aside" data-reveal="fade">
+    <h2>The free plan</h2>
+    <ul class="auth-list">
+      <li>The full graded record, every win and every loss</li>
+      <li>Two model picks a day in each league</li>
+      <li>Live scores on the picks that are running</li>
+    </ul>
+    <a class="auth-more" href="{{ url_for('billing.pricing') }}">Compare the plans</a>
+    <p class="auth-fine">For entertainment and information. No guarantee of profit. ConnexOntario 1 866 531 2600.</p>
+  </aside>
+</div>
+{% endblock %}

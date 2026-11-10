@@ -1,0 +1,9 @@
+.env
+.git
+.pytest_cache
+__pycache__
+*.pyc
+data/
+archive/
+graphify-out/
+preview.html

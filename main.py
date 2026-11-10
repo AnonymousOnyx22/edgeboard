@@ -156,7 +156,11 @@ def cmd_backfill(args) -> None:
     for code in _sports(args):
         config = sport_registry.get(code)
         print(f"\n{config.emoji} {config.name}: loading {args.seasons} season(s)")
-        result = history_store.backfill(code, seasons=args.seasons, progress=progress)
+        try:
+            result = history_store.backfill(code, seasons=args.seasons, progress=progress)
+        except history_store.HistoryUnavailableError as exc:
+            print(f"  ! {exc}", file=sys.stderr)
+            continue
         print(f"  stored {result['written']} games "
               f"({result['seasons'][0]}-{result['seasons'][-1]})")
 

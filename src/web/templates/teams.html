@@ -1,44 +1,91 @@
 {% extends "base.html" %}
 {% import "_media.html" as media with context %}
-{% block title %}Edgeboard · Teams{% endblock %}
-{% block content %}
-<div class="eyebrow">Clubs</div>
-<h1>Teams playing</h1>
-<p class="lede">Every club in the league with its next fixture, the model’s best line on that game, and a shortcut to that team’s best players, top to bottom.</p>
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/research.css') }}">{% endblock %}
+{% block title %}Teams{% endblock %}
 
-<div class="seg-row" role="group" aria-label="Sport">
-  {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
-     href="{{ url_for('teams_index', sport=item.code) }}">{{ item.name }}</a>{% endfor %}
+{# A game line as it reads out loud: "DET to win", "PHI +5.5", "Over 54.5". #}
+{% macro line_bet(c) -%}
+  {%- if c.market == 'total' -%}{{ c.side|capitalize }} {{ '%g'|format(c.line) }}
+  {%- elif c.market == 'spread' and c.line is not none -%}{{ c.side }} {{ ('%+g'|format(c.line))|minus }}
+  {%- else -%}{{ c.side }} to win{%- endif -%}
+{%- endmacro %}
+
+{% macro club_tile(team) -%}
+  <a class="club-tile {{ 'is-idle' if not team.card }}" data-reveal="deal"
+     href="{{ url_for('team_detail', sport=sport.code, abbrev=team.abbrev) }}">
+    <header>
+      {{ media.crest(team.abbrev, sport.code, 'lg') }}
+      <h3>{{ team.name }}<small>{{ team.abbrev }}</small></h3>
+    </header>
+    <div class="club-next">
+      {% if team.card %}
+        <b>{{ 'vs' if team.at_home else 'at' }} {{ team.opponent }}</b>
+        <span>{{ team.card.kickoff_local() }}</span>
+      {% else %}
+        <b>No game soon</b>
+        <span>Nothing scheduled in the next two weeks</span>
+      {% endif %}
+    </div>
+    {% if team.best %}
+      <div class="club-best">
+        <b>{{ line_bet(team.best) }}</b>
+        <span class="price-line">{{ team.best.odds|odds }}<span class="edge {{ 'positive' if team.best.edge >= 0 else 'negative' }}">{{ (team.best.edge * 100)|signed('%+.1f', '%') }}</span></span>
+      </div>
+    {% elif team.card %}
+      <div class="club-best is-none">No line clears the bar yet</div>
+    {% endif %}
+  </a>
+{%- endmacro %}
+
+{% block content %}
+{% set playing = teams|selectattr('card')|list %}
+{% set idle = teams|rejectattr('card')|list %}
+
+<div class="page-head">
+  <div class="page-head-text">
+    <h1 class="page-title">Teams</h1>
+    <p class="lede">Every club in the league, when it plays next, and the line the model likes on that game. Open a club for its roster and its best bets.</p>
+  </div>
 </div>
 
-<section class="section">
-  <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr>
-        <th>Team</th><th>Next game</th><th>Best line</th><th>Odds / edge</th><th>Players</th>
-      </tr></thead>
-      <tbody>
-      {% for team in teams %}
-        <tr>
-          <td>
-            <a href="{{ url_for('team_detail', sport=sport.code, abbrev=team.abbrev) }}" class="team-link">
-              {{ media.crest(team.abbrev, sport.code) }}<b>{{ team.name }}</b><span class="pos">{{ team.abbrev }}</span>
-            </a>
-          </td>
-          {% if team.card %}
-            <td>{{ 'vs' if team.at_home else '@' }} {{ team.opponent }}<br><span class="pos">{{ team.card.kickoff_local() }}</span></td>
-            {% if team.best %}
-              <td><b>{{ team.best.headline }}</b><br><span class="note" style="margin:0">{{ team.best.game }}</span></td>
-              <td>{{ '%+d'|format(team.best.odds) }}<br><span class="{{ 'positive' if team.best.edge >= 0 else 'negative' }}">{{ '%+.1f%%'|format(team.best.edge * 100) }}</span></td>
-            {% else %}<td class="note" style="margin:0" colspan="2">No qualifying pick</td>{% endif %}
-          {% else %}
-            <td colspan="3" class="note" style="margin:0">No scheduled game in the next two weeks</td>
-          {% endif %}
-          <td><a href="{{ url_for('team_detail', sport=sport.code, abbrev=team.abbrev) }}" class="button small">Open</a></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+<div class="seg-row" role="group" aria-label="League">
+  {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
+     href="{{ url_for('teams_index', sport=item.code) }}"
+     {% if item.code == sport.code %}aria-current="page"{% endif %}>{{ item.name }}</a>{% endfor %}
+</div>
+
+{% if not teams %}
+  <div class="empty">
+    <h3>No {{ sport.name }} clubs on file yet.</h3>
+    <p>Clubs arrive with the fixtures, which sync on their own every hour while Edgeboard runs.</p>
   </div>
-</section>
+{% else %}
+  {% if playing %}
+  <section class="section" style="margin-top:8px">
+    <div class="section-head">
+      <div>
+        <h2>Playing in the next two weeks</h2>
+        <p>{{ playing|length }} club{{ '' if playing|length == 1 else 's' }}, soonest game first.</p>
+      </div>
+    </div>
+    <div class="club-grid" data-stagger>
+      {% for team in playing|sort(attribute='card.start_utc') %}{{ club_tile(team) }}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if idle %}
+  <section class="section">
+    <div class="section-head">
+      <div>
+        <h2>No game in the next two weeks</h2>
+        <p>Still here, so every roster stays one click away.</p>
+      </div>
+    </div>
+    <div class="club-grid" data-stagger>
+      {% for team in idle %}{{ club_tile(team) }}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+{% endif %}
 {% endblock %}

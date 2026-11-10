@@ -82,16 +82,19 @@ def test_no_meetings_is_reported_not_invented():
 
 
 def test_la_and_washington_abbreviations_match_across_sources():
-    frame = pd.DataFrame([
-        {"season": 2025, "week": 1, "gameday": "2025-09-07", "home_team": "LA",
-         "away_team": "WAS", "home_score": 24, "away_score": 21,
-         "spread_line": 3.0, "total_line": 45.0, "roof": "open"},
-    ])
-    # The DB stores ESPN spellings; the history frame uses nflverse ones.
-    series = h2h.team_series("LAR", "WSH", frame)
+    row = {"season": 2025, "week": 1, "gameday": "2025-09-07",
+           "home_score": 24, "away_score": 21,
+           "spread_line": 3.0, "total_line": 45.0, "roof": "open"}
+    # The store writes ESPN spellings; a raw nflverse frame is normalised on
+    # the way in. Both shapes, from either abbreviation style, must match.
+    espn_store = pd.DataFrame([dict(row, home_team="LAR", away_team="WSH")])
+    series = h2h.team_series("LAR", "WSH", espn_store)
     assert series.n == 1
     assert series.record() == (1, 0, 0)
     assert series.meetings[0].margin_for("LAR") == 3
+    nflverse = pd.DataFrame([dict(row, home_team="LA", away_team="WAS")])
+    assert h2h.team_series("LAR", "WSH", nflverse).n == 1
+    assert h2h.team_series("LA", "WAS", nflverse).n == 1
 
 
 # ------------------------------------------------------------ participation

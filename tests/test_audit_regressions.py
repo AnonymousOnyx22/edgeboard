@@ -94,16 +94,22 @@ def test_spread_and_total_use_points_lines_not_prices(audit_db):
 
 
 def test_odds_api_team_names_are_normalized_to_abbreviations(audit_db):
+    # The kickoff has to stay in the future: a price is only recorded for a
+    # game that has not started, so a hard-coded date quietly turns this test
+    # into a no-op the day it passes.
+    kickoff = ((dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=3))
+               .replace(microsecond=0).isoformat().replace("+00:00", "Z"))
     with db.connect(audit_db) as conn:
         conn.execute("INSERT INTO teams (id,sport_id,league_key,name,abbrev) VALUES (1,1,'A','Away Team','AWY')")
         conn.execute("INSERT INTO teams (id,sport_id,league_key,name,abbrev) VALUES (2,1,'H','Home Team','HOM')")
         conn.execute("""INSERT INTO games
             (id,sport_id,external_id,away_team,home_team,start_utc,game_date,status)
-            VALUES (1,1,'G',1,2,'2026-09-20T17:00:00Z','2026-09-20','scheduled')""")
+            VALUES (1,1,'G',1,2,?,?,'scheduled')""",
+            (kickoff, kickoff[:10]))
         conn.commit()
     payload = [{
         "home_team": "Home Team", "away_team": "Away Team",
-        "commence_time": "2026-09-20T17:00:00Z",
+        "commence_time": kickoff,
         "bookmakers": [{"key": "book", "markets": [{"key": "h2h", "outcomes": [
             {"name": "Home Team", "price": -120},
             {"name": "Away Team", "price": 105},
@@ -112,6 +118,30 @@ def test_odds_api_team_names_are_normalized_to_abbreviations(audit_db):
     NflPicker(db_path=audit_db)._store_odds_api(payload)
     sides = {r["side"] for r in db.query(audit_db, "SELECT side FROM odds")}
     assert sides == {"HOM", "AWY"}
+
+
+def test_a_price_is_never_recorded_for_a_game_already_under_way(audit_db):
+    """Live prices look like enormous edges to a model that cannot see the
+    score, so a started game must not take a pregame quote."""
+    started = ((dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=2))
+               .replace(microsecond=0).isoformat().replace("+00:00", "Z"))
+    with db.connect(audit_db) as conn:
+        conn.execute("INSERT INTO teams (id,sport_id,league_key,name,abbrev) VALUES (1,1,'A','Away Team','AWY')")
+        conn.execute("INSERT INTO teams (id,sport_id,league_key,name,abbrev) VALUES (2,1,'H','Home Team','HOM')")
+        conn.execute("""INSERT INTO games
+            (id,sport_id,external_id,away_team,home_team,start_utc,game_date,status)
+            VALUES (1,1,'G',1,2,?,?,'in_progress')""", (started, started[:10]))
+        conn.commit()
+    payload = [{
+        "home_team": "Home Team", "away_team": "Away Team",
+        "commence_time": started,
+        "bookmakers": [{"key": "book", "markets": [{"key": "h2h", "outcomes": [
+            {"name": "Home Team", "price": -120},
+            {"name": "Away Team", "price": 105},
+        ]}]}],
+    }]
+    NflPicker(db_path=audit_db)._store_odds_api(payload)
+    assert db.query(audit_db, "SELECT side FROM odds") == []
 
 
 def test_record_roi_uses_units_staked(audit_db):

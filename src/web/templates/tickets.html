@@ -1,68 +1,93 @@
 {% extends "base.html" %}
 {% import "_media.html" as media with context %}
+{% block title %}Today’s games{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/games.css') }}">{% endblock %}
+
+{# How a game line reads out loud: "PHI to win", "PHI +5.5", "Over 54.5". #}
+{% macro line_text(c) -%}
+  {%- if c.market == 'h2h' -%}{{ c.side }} to win
+  {%- elif c.market == 'spread' and c.line is not none -%}{{ c.side }} {{ c.line|signed('%+g') }}
+  {%- elif c.market == 'total' and c.line is not none -%}{{ c.side }} {{ '%g'|format(c.line) }}
+  {%- else -%}{{ c.headline|minus }}{%- endif -%}
+{%- endmacro %}
 
 {% block content %}
-<h1>Today’s games</h1>
-<p class="lede">One card per fixture: who is playing, when, and where. Open a card for the bets the model likes on that game.</p>
-
-<div class="seg-group" role="tablist" aria-label="Sport">
-  {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
-     href="{{ url_for('tickets', sport=item.code, days=days) }}">{{ item.name }}</a>{% endfor %}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1 class="page-title">Today’s games</h1>
+    <p class="lede">Every {{ sport.name }} game on {{ day|nice_date }}, where it is played, and the bet the model likes most. Open a ticket for the full read.</p>
+  </div>
 </div>
 
+<nav class="seg-group" aria-label="League">
+  {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
+     href="{{ url_for('tickets', sport=item.code, days=days) }}"
+     {% if item.code == sport.code %}aria-current="page"{% endif %}>{{ item.name }}</a>{% endfor %}
+</nav>
+
 {% if cards %}
-<div class="ticket-grid">
+<div class="ticket-grid" data-stagger>
   {% for card in cards %}
-    <a class="ticket {{ 'is-started' if card.started }}"
-       href="{{ url_for('game_detail', sport=sport.code, game_id=card.game_id) }}">
+    {% set state = {'final': 'Final', 'in_progress': 'Live', 'postponed': 'Postponed'}.get(card.status, 'Started') %}
+    <a class="ticket {{ 'is-started' if card.started }} {{ 'is-live' if card.status == 'in_progress' }}"
+       data-reveal="deal"
+       href="{{ url_for('game_detail', sport=sport.code, game_id=card.game_id) }}"
+       aria-label="{{ card.away }} at {{ card.home }}, {{ card.kickoff_day() }} {{ card.kickoff_time() }}{{ ', ' ~ state if card.started }}">
 
       <div class="ticket-stub">
         <span class="ticket-day">{{ card.kickoff_day() }}</span>
-        <span class="ticket-time">{{ card.kickoff_time() }}</span>
-        {% if card.started %}<span class="ticket-live">{{ 'Final' if card.status == 'final' else 'Live' }}</span>{% endif %}
+        {% set clock = card.kickoff_time().split(' ', 1) %}
+        <span class="ticket-time"><b>{{ clock[0] }}</b>{% if clock|length > 1 %} <span>{{ clock[1] }}</span>{% endif %}</span>
+        {% if card.started %}<span class="ticket-state">{{ state }}</span>{% endif %}
       </div>
 
-      <div class="ticket-body">
-        <div class="ticket-side">
-          {{ media.crest(card.away, sport.code) }}
-          <span class="ticket-team">{{ card.away }}</span>
-          <span class="ticket-role">away</span>
+      <div class="ticket-main">
+        <div class="ticket-teams">
+          <div class="ticket-side">
+            {{ media.crest(card.away, sport.code, 'lg') }}
+            <span class="ticket-team">{{ card.away }}</span>
+            <span class="ticket-role">Away</span>
+          </div>
+          <span class="ticket-at">at</span>
+          <div class="ticket-side">
+            {{ media.crest(card.home, sport.code, 'lg') }}
+            <span class="ticket-team">{{ card.home }}</span>
+            <span class="ticket-role">Home</span>
+          </div>
         </div>
 
-        <span class="ticket-at">@</span>
+        <p class="ticket-venue">
+          {% if card.venue %}
+            <span class="ticket-park">{{ card.venue }}</span>
+            {% if card.venue_city %}<span class="ticket-city">{{ card.venue_city }}</span>{% endif %}
+          {% else %}
+            <span class="ticket-city">Venue not confirmed yet</span>
+          {% endif %}
+        </p>
 
-        <div class="ticket-side">
-          {{ media.crest(card.home, sport.code) }}
-          <span class="ticket-team">{{ card.home }}</span>
-          <span class="ticket-role">home</span>
+        <div class="ticket-best">
+          {% set best = card.best %}
+          {% if card.started %}
+            <span class="ticket-best-label">Betting closed</span>
+          {% elif best %}
+            <span class="ticket-best-label">Model’s best bet</span>
+            <span class="ticket-best-bet">
+              <b>{{ line_text(best) }}</b>
+              <span class="price">{{ best.odds|odds }}</span>
+              <span class="ticket-edge {{ 'positive' if best.edge >= 0 else 'negative' }}">{{ (best.edge * 100)|signed('%+.1f', '%') }} edge</span>
+            </span>
+          {% else %}
+            <span class="ticket-best-label">No line clears the edge bar yet</span>
+          {% endif %}
         </div>
-      </div>
-
-      <div class="ticket-foot">
-        {% if card.venue %}
-          <span class="ticket-venue">{{ card.venue }}</span>
-          {% if card.venue_city %}<span class="ticket-city">{{ card.venue_city }}</span>{% endif %}
-        {% else %}
-          <span class="ticket-venue pos">Venue to be confirmed</span>
-        {% endif %}
-
-        {% set best = card.best %}
-        {% if best %}
-          <span class="ticket-best">
-            <b>{{ best.headline }}</b>
-            <span class="{{ 'positive' if best.edge >= 0 else 'negative' }}">{{ '%+.1f%%'|format(best.edge * 100) }}</span>
-          </span>
-        {% else %}
-          <span class="ticket-best pos">No edge on the board</span>
-        {% endif %}
       </div>
     </a>
   {% endfor %}
 </div>
 {% else %}
   <div class="empty">
-    <h3>No {{ sport.name }} games on {{ day }}.</h3>
-    <p>Sync the fixtures on <a href="{{ url_for('games', sport=sport.code) }}" style="text-decoration:underline">Today’s games</a>, or pick another sport.</p>
+    <h3>No {{ sport.name }} games on {{ day|nice_date }}.</h3>
+    <p>Fixtures and prices sync on their own every hour while Edgeboard runs. Pick another league above.</p>
   </div>
 {% endif %}
 {% endblock %}

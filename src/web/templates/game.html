@@ -1,91 +1,131 @@
 {% extends "base.html" %}
 {% import "_media.html" as media with context %}
+{% block title %}{{ card.away }} at {{ card.home }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/games.css') }}">{% endblock %}
+
+{% macro line_text(c) -%}
+  {%- if c.market == 'h2h' -%}{{ c.side }} to win
+  {%- elif c.market == 'spread' and c.line is not none -%}{{ c.side }} {{ c.line|signed('%+g') }}
+  {%- elif c.market == 'total' and c.line is not none -%}{{ c.side }} {{ '%g'|format(c.line) }}
+  {%- else -%}{{ c.headline|minus }}{%- endif -%}
+{%- endmacro %}
+
+{% set market_names = {'h2h': 'Moneyline', 'spread': 'Spread', 'total': 'Total'} %}
+{% set state = {'final': 'Final', 'in_progress': 'Live now', 'postponed': 'Postponed'}.get(card.status, 'Under way') %}
 
 {% block content %}
-<a class="back" href="{{ url_for('tickets', sport=sport.code) }}">← Today’s games</a>
+<a class="back" href="{{ url_for('tickets', sport=sport.code) }}">
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  Today’s games
+</a>
 
-<div class="game-hero">
-  <div class="game-hero-teams">
-    <span class="game-hero-side">
-      {{ media.crest(card.away, sport.code) }}<b>{{ card.away }}</b>
-    </span>
-    <span class="game-hero-at">@</span>
-    <span class="game-hero-side">
-      {{ media.crest(card.home, sport.code) }}<b>{{ card.home }}</b>
-    </span>
+<header class="game-hero {{ 'is-started' if card.started }}">
+  <div class="game-hero-row">
+    <div class="game-hero-side is-away">
+      {{ media.crest(card.away, sport.code, 'xl') }}
+      <span class="game-hero-role">Away</span>
+    </div>
+    <div class="game-hero-center">
+      <h1 class="page-title">{{ card.away }} at {{ card.home }}</h1>
+      {% if card.started %}<span class="live-badge {{ 'final' if card.status != 'in_progress' }}">{{ state }}</span>{% endif %}
+    </div>
+    <div class="game-hero-side is-home">
+      {{ media.crest(card.home, sport.code, 'xl') }}
+      <span class="game-hero-role">Home</span>
+    </div>
   </div>
-  <p class="game-hero-meta">
-    {{ card.kickoff_day() }} · {{ card.kickoff_time() }}
-    {% if card.venue %} · {{ card.venue }}{% endif %}
-    {% if card.venue_city %} · {{ card.venue_city }}{% endif %}
-  </p>
+
+  <dl class="game-facts" data-stagger>
+    <div data-reveal="fade"><dt>When</dt><dd>{{ card.kickoff_day() }} at {{ card.kickoff_time() }}</dd></div>
+    {% if card.venue %}<div data-reveal="fade"><dt>Where</dt><dd>{{ card.venue }}{% if card.venue_city %}<span>{{ card.venue_city }}</span>{% endif %}</dd></div>{% endif %}
+    <div data-reveal="fade"><dt>League</dt><dd>{{ sport.name }}</dd></div>
+  </dl>
+
   {% if card.started %}
-    <p class="note">This game has started, so the numbers below are no longer bettable.</p>
+    <p class="game-closed">This game has started, so the numbers below can no longer be bet.</p>
   {% endif %}
-</div>
+</header>
 
 <section class="section">
   <div class="section-head">
     <div>
-      <div class="eyebrow">Game lines</div>
-      <h2>Moneyline, spread and total</h2>
-      <p>Every offered number the model has a view on, best edge first.</p>
+      <h2>Game lines</h2>
+      <p>Moneyline, spread and total. Every number the model has a view on, biggest edge first.</p>
     </div>
   </div>
   {% if card.candidates %}
   <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table board-table">
       <thead><tr>
-        <th>Bet</th><th>Market</th><th>Price</th><th>Model</th><th>Implied</th><th>Edge</th><th>Confidence</th>
+        <th>Bet</th><th>Market</th><th class="num">Price</th><th class="num">Model</th>
+        <th class="num">Market says</th><th class="num">Edge</th><th>Confidence</th>
       </tr></thead>
       <tbody>
       {% for c in card.candidates|sort(attribute='edge', reverse=true) %}
         <tr>
-          <td>{{ media.pick_badge(c.side, sport.code) }}<b>{{ c.headline }}</b></td>
-          <td>{{ c.market }}</td>
-          <td>{{ '%+d'|format(c.odds) }}</td>
-          <td>{{ '%.0f%%'|format(c.model_prob * 100) }}</td>
-          <td>{{ '%.0f%%'|format(c.implied_prob * 100) }}</td>
-          <td class="{{ 'positive' if c.edge >= 0 else 'negative' }}">{{ '%+.1f%%'|format(c.edge * 100) }}</td>
-          <td>{{ c.confidence.score }}/10</td>
+          <td><span class="bet-cell">{{ media.pick_badge(c.side, sport.code) }}<b>{{ line_text(c) }}</b></span></td>
+          <td class="muted">{{ market_names.get(c.market, c.market|capitalize) }}</td>
+          <td class="num price">{{ c.odds|odds }}</td>
+          <td class="num">{{ '%.0f%%'|format(c.model_prob * 100) }}</td>
+          <td class="num muted">{{ '%.0f%%'|format(c.implied_prob * 100) }}</td>
+          <td class="num {{ 'positive' if c.edge >= 0 else 'negative' }}">{{ (c.edge * 100)|signed('%+.1f', '%') }}</td>
+          <td>
+            <span class="confidence" aria-label="Confidence {{ c.confidence.score }} of 10">
+              <span class="confidence-bar" aria-hidden="true"><b style="--fill: {{ c.confidence.score / 10 }}"></b></span>
+              <span>{{ c.confidence.score }}/10</span>
+            </span>
+          </td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
-  {% else %}<div class="empty"><h3>No priced game lines.</h3><p>Sync odds on the games page and come back.</p></div>{% endif %}
+  {% else %}
+    <div class="empty">
+      <h3>No priced game lines yet.</h3>
+      <p>Prices sync on their own every hour while Edgeboard runs.</p>
+    </div>
+  {% endif %}
 </section>
 
 <section class="section">
   <div class="section-head">
     <div>
-      <div class="eyebrow">Player bets</div>
-      <h2>Props on this game</h2>
-      <p>Form is head to head: what the player has done against this opponent.</p>
+      <h2>Player bets</h2>
+      <p>Form is head to head: what each player has done against this opponent.</p>
     </div>
   </div>
   {% if props %}
   <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table board-table">
       <thead><tr>
-        <th>Player</th><th>Bet</th><th>Hit chance</th><th>Price / edge</th><th>Evidence</th>
+        <th>Player</th><th>Bet</th><th class="num">Hit chance</th><th class="num">Price</th>
+        <th class="num">Edge</th><th>Evidence</th>
       </tr></thead>
       <tbody>
       {% for p in props %}
+        {% set bet = p.headline|replace(p.player ~ ' ', '') %}
         <tr>
           <td>
             <a href="{{ url_for('player_detail', sport=sport.code, athlete_id=p.athlete_id, team=p.team) }}" class="player-link">
               {{ media.headshot(p.athlete_id, p.player, sport.code) }}<b>{{ p.player }}</b><span class="pos">{{ p.position }}</span>
             </a>
           </td>
-          <td><b>{{ p.headline }}</b></td>
-          <td>{{ '%.0f%%'|format(p.probability * 100) }}</td>
+          <td><b>{{ bet[:1]|upper ~ bet[1:] }}</b></td>
+          <td class="num">{{ '%.0f%%'|format(p.probability * 100) }}</td>
+          {% if p.odds is not none %}
+            <td class="num price">{{ p.odds|odds }}</td>
+            <td class="num {{ 'positive' if (p.edge or 0) >= 0 else 'negative' }}">{{ ((p.edge or 0) * 100)|signed('%+.1f', '%') }}</td>
+          {% else %}
+            <td class="num muted">No price</td><td class="num muted"></td>
+          {% endif %}
           <td>
-            {% if p.odds is not none %}{{ '%+d'|format(p.odds) }}
-              <span class="{{ 'positive' if (p.edge or 0) >= 0 else 'negative' }}">({{ '%+.1f%%'|format((p.edge or 0) * 100) }})</span>
-            {% else %}<span class="pos">no price</span>{% endif %}
+            <ul class="evidence">
+              {% for part in p.evidence().split(' · ') %}<li>{{ part|replace('proj ', 'Projection ') }}</li>{% endfor %}
+            </ul>
           </td>
-          <td class="mono">{{ p.evidence() }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -94,7 +134,7 @@
   {% else %}
     <div class="empty">
       <h3>No player bets cached for this game.</h3>
-      <p>{{ props_note or 'Build the player board to price this game’s props.' }}</p>
+      <p>{{ (props_note or 'Build the player board to price the props for this game.')|dashless|replace('in-play', 'in play') }}</p>
     </div>
   {% endif %}
 </section>

@@ -1,21 +1,47 @@
 {% extends "base.html" %}
 {% import "_media.html" as media with context %}
-{% block title %}Edgeboard · {{ view.name }}{% endblock %}
-{% block content %}
-<a class="back" href="{{ url_for('teams_index', sport=sport.code) }}">← Back to teams</a>
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/research.css') }}">{% endblock %}
+{% block title %}{{ view.name }}{% endblock %}
 
-<div class="player-header card">
-  {{ media.crest(view.abbrev, sport.code, 'lg') }}
+{% macro line_bet(c) -%}
+  {%- if c.market == 'total' -%}{{ c.side|capitalize }} {{ '%g'|format(c.line) }}
+  {%- elif c.market == 'spread' and c.line is not none -%}{{ c.side }} {{ ('%+g'|format(c.line))|minus }}
+  {%- else -%}{{ c.side }} to win{%- endif -%}
+{%- endmacro %}
+
+{% macro prop_bet(bet) -%}
+  {{ 'Under' if bet.side == 'under' else 'Over' }} {{ '%g'|format(bet.line) }} {{ bet.label }}
+{%- endmacro %}
+
+{% block content %}
+{% set MARKETS = {'h2h': 'Moneyline', 'spread': 'Spread', 'total': 'Game total'} %}
+<a class="back" href="{{ url_for('teams_index', sport=sport.code) }}">
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  All {{ sport.name }} teams
+</a>
+
+<header class="profile-hero">
+  {{ media.crest(view.abbrev, sport.code, 'lg hero-crest') }}
   <div>
-    <div class="eyebrow">{{ sport.name }}</div>
-    <h1>{{ view.name }}</h1>
-    <p class="muted">
+    <h1 class="page-title">{{ view.name }}</h1>
+    <ul class="profile-meta">
+      <li><b>{{ view.abbrev }}</b></li>
+      <li>{{ sport.name }}</li>
       {% if view.card %}
-      {{ 'vs' if view.at_home else '@' }} {{ view.opponent }} · {{ view.card.kickoff_local() }}
-      {% else %}No scheduled game in the next two weeks{% endif %}
-    </p>
+        <li>Next: {{ 'home to' if view.at_home else 'away at' }} <b>{{ view.opponent }}</b></li>
+      {% else %}
+        <li>No game in the next two weeks</li>
+      {% endif %}
+    </ul>
   </div>
-</div>
+  {% if view.card %}
+    <a class="next-ticket" href="{{ url_for('game_detail', sport=sport.code, game_id=view.card.game_id) }}">
+      <small>{{ view.card.kickoff_local() }}</small>
+      <b>{{ view.card.away }} at {{ view.card.home }}</b>
+      <span>See every bet on it</span>
+    </a>
+  {% endif %}
+</header>
 
 {% if view.note %}<p class="note">{{ view.note }}</p>{% endif %}
 
@@ -23,39 +49,39 @@
 <section class="section">
   <div class="section-head">
     <div>
-      <div class="eyebrow">Game lines</div>
-      <h2>Best bets on {{ view.card.matchup }}</h2>
-      <p>Game-level lines the model rates above the edge threshold.</p>
+      <h2>Game lines</h2>
+      <p>The {{ view.abbrev }} side and the game total, wherever the model beats the book by enough to count.</p>
     </div>
   </div>
   {% if view.picks %}
-  <div class="bet-grid">
+  <div class="bet-grid" data-stagger>
     {% for c in view.picks %}
-    <article class="bet card">
-      <div class="bet-head">
-        <h3>{{ c.headline }}</h3>
-        <span class="prob">{{ '%.0f%%'|format(c.model_prob * 100) }}</span>
-      </div>
-      <dl class="bet-meta">
-        <div><dt>Price</dt><dd>{{ '%+d'|format(c.odds) }}</dd></div>
-        <div><dt>Edge</dt><dd class="{{ 'positive' if c.edge >= 0 else 'negative' }}">{{ '%+.1f%%'|format(c.edge * 100) }}</dd></div>
-        <div><dt>Market</dt><dd>{{ c.market }}</dd></div>
-        {% if c.h2h_note %}<div><dt>H2H</dt><dd class="mono">{{ c.h2h_note }}</dd></div>{% endif %}
+    <article class="bet-card" data-reveal="deal">
+      <header>
+        <h3>{{ line_bet(c) }}<small>{{ MARKETS.get(c.market, c.market|capitalize) }}</small></h3>
+        <span class="chance">{{ '%.0f%%'|format(c.model_prob * 100) }}</span>
+      </header>
+      <dl class="bet-facts">
+        <div><dt>Price</dt><dd class="price">{{ c.odds|odds }}</dd></div>
+        <div><dt>Book says</dt><dd>{{ '%.0f%%'|format(c.implied_prob * 100) }}</dd></div>
+        <div><dt>Edge</dt><dd class="{{ 'positive' if c.edge >= 0 else 'negative' }}">{{ (c.edge * 100)|signed('%+.1f', '%') }}</dd></div>
       </dl>
-      {% if c.warnings %}<p class="note warn">⚠ {{ c.warnings|join(' ') }}</p>{% endif %}
+      {% if c.h2h_note %}<p class="bet-evidence">{{ c.h2h_note|dashless }}</p>{% endif %}
+      {% if c.warnings %}<p class="note warn">{{ c.warnings|join(' ') }}</p>{% endif %}
     </article>
     {% endfor %}
   </div>
-  {% else %}<div class="empty"><h3>No qualifying pick on this game.</h3><p>Refresh odds on the games page to recheck.</p></div>{% endif %}
+  {% else %}
+  <div class="empty"><h3>No line clears the bar on this game.</h3><p>Prices sync on their own every hour, so this can change before the game.</p></div>
+  {% endif %}
 </section>
 {% endif %}
 
 <section class="section">
   <div class="section-head">
     <div>
-      <div class="eyebrow">Depth chart</div>
-      <h2>{{ view.name }} players, best bet first</h2>
-      <p>Ranked by the probability of their best property clearing, top to bottom.</p>
+      <h2>Roster, best bet first</h2>
+      <p>Each player ranked by the chance their best bet lands.</p>
     </div>
   </div>
 
@@ -63,7 +89,8 @@
   <div class="table-wrap">
     <table class="data-table">
       <thead><tr>
-        <th>Player</th><th>Position</th><th>Best bet</th><th>Hit chance</th><th>Price / edge</th><th>Form</th>
+        <th>Player</th><th>Best bet</th><th class="num">Chance</th><th class="num">Price and edge</th>
+        <th>{{ 'Last 5 vs ' ~ view.opponent if view.opponent else 'Last 5 games' }}</th>
       </tr></thead>
       <tbody>
       {% for p in view.players %}
@@ -71,26 +98,38 @@
         <tr>
           <td>
             <a href="{{ url_for('player_detail', sport=sport.code, athlete_id=p.athlete_id, team=p.team) }}" class="player-link">
-              {{ media.headshot(p.athlete_id, p.name, sport.code) }}<b>{{ p.name }}</b>
+              {{ media.headshot(p.athlete_id, p.name, sport.code) }}<b>{{ p.name }}</b><span class="pos">{{ p.position }}</span>
             </a>
             {% if p.injury_status %}<span class="pill red" style="margin-left:6px">{{ p.injury_status }}</span>{% endif %}
           </td>
-          <td><span class="pos">{{ p.position }}</span></td>
           {% if bet %}
-            <td><b>{{ bet.headline }}</b></td>
-            <td><b>{{ '%.0f%%'|format(bet.probability * 100) }}</b></td>
-            <td>
-              {% if bet.odds is not none %}{{ '%+d'|format(bet.odds) }} <span class="{{ 'positive' if (bet.edge or 0) >= 0 else 'negative' }}">({{ '%+.1f%%'|format((bet.edge or 0) * 100) }})</span>{% else %}<span class="pos">no price</span>{% endif %}
+            <td><b>{{ prop_bet(bet) }}</b></td>
+            <td class="num">
+              <span class="chance">{{ '%.0f%%'|format(bet.probability * 100) }}</span>
+              <span class="chance-meter" aria-hidden="true"><b style="--p: {{ '%.3f'|format(bet.probability) }}"></b></span>
             </td>
-            <td class="mono">{{ p.recent_form(bet.stat_key, 5) }}</td>
+            <td class="num">
+              {% if bet.odds is not none %}<span class="price-line"><span class="price">{{ bet.odds|odds }}</span><span class="edge {{ 'positive' if (bet.edge or 0) >= 0 else 'negative' }}">{{ ((bet.edge or 0) * 100)|signed('%+.1f', '%') }}</span></span>
+              {% else %}<span class="pos">no price yet</span>{% endif %}
+            </td>
+            <td>
+              {% if view.opponent %}
+                {% set vs = p.h2h_form(bet.stat_key, 5) %}
+                {% if vs %}<span class="form-run">{{ vs }}</span>{% else %}<span class="form-none">first meeting</span>{% endif %}
+              {% else %}
+                <span class="form-run">{{ p.recent_form(bet.stat_key, 5) }}</span>
+              {% endif %}
+            </td>
           {% else %}
-            <td colspan="4" class="note" style="margin:0">No bet cleared the probability floor</td>
+            <td colspan="4" class="muted">No bet clears 55%</td>
           {% endif %}
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
-  {% else %}<div class="empty"><h3>No players to rank yet.</h3><p>The roster has not loaded, or nobody has played yet this season.</p></div>{% endif %}
+  {% else %}
+  <div class="empty"><h3>No players to rank yet.</h3><p>The roster has not loaded, or nobody on it has played this season.</p></div>
+  {% endif %}
 </section>
 {% endblock %}

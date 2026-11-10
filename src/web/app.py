@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import hmac
 import os
+import re
 import secrets
 from pathlib import Path
 
@@ -17,6 +18,13 @@ from ..picker.backtest import record_summary
 from ..picker.engine import Picker
 from ..picker.grader import grade_all
 from ..picker.parlay_builder import optimize
+from . import gating
+from .billing import CSRF_EXEMPT
+
+# Pages that change the model or spend Odds API credits. In service mode
+# only the owner (EDGEBOARD_ADMIN_EMAILS) may reach them.
+ADMIN_ENDPOINTS = {"settings", "sync", "run_autopick", "grade",
+                   "refresh_players", "track_model_parlay"}
 
 
 def create_app(db_path=None) -> Flask:
@@ -36,22 +44,45 @@ def create_app(db_path=None) -> Flask:
     )
     app.jinja_env.auto_reload = True
     db.init_db(app.config["DB_PATH"])
+    if gating.service_on():
+        # A public copy: cookies only over HTTPS and never readable by scripts.
+        app.config.update(SESSION_COOKIE_SECURE=True, SESSION_COOKIE_HTTPONLY=True,
+                          SESSION_COOKIE_SAMESITE="Lax")
+
+    from .hitrates_bp import bp as hitrates_bp
+    app.register_blueprint(hitrates_bp)
 
     @app.before_request
     def verify_csrf():
         if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
             return None
+        if request.endpoint in CSRF_EXEMPT:
+            return None  # Stripe signs its webhook instead
         expected = session.get("_csrf_token", "")
         supplied = request.form.get("_csrf_token", "")
         if not expected or not supplied or not hmac.compare_digest(expected, supplied):
             abort(400, description="The form expired. Reload the page and try again.")
         return None
 
+    @app.before_request
+    def owner_only():
+        if request.endpoint not in ADMIN_ENDPOINTS or not gating.service_on():
+            return None
+        admins = {e.strip().lower() for e in
+                  os.getenv("EDGEBOARD_ADMIN_EMAILS", "").split(",") if e.strip()}
+        user = gating.current_user()
+        email = (user["email"] if user else "").lower()
+        if not email or email not in admins:
+            abort(404)
+        return None
+
     @app.context_processor
     def shared_context():
         from ..data.odds_client import OddsClient
         from ..picker import autopick as autopick_mod
+        from ..picker import live as live_mod
         credits = OddsClient.credits()
+        open_now = _crawl_picks(app.config["DB_PATH"])
         token = session.get("_csrf_token")
         if not token:
             token = secrets.token_urlsafe(32)
@@ -63,6 +94,12 @@ def create_app(db_path=None) -> Flask:
             # Club crests and player headshots, resolved in the templates.
             # Prop legs store their market as prop:<stat key>; templates use
             # these to tell a player bet from a game line.
+            "bet_label": bet_label,
+            "money": money,
+            "bankroll": bankroll,
+            "pick_state": pick_state,
+            "unit_size": unit_size(),
+            "live_status": live_mod.describe,
             "is_prop": autopick_mod.is_prop_market,
             "prop_stat": autopick_mod.stat_key_of,
             "stat_label": lambda key, code: sport_registry.get(code)
@@ -70,7 +107,23 @@ def create_app(db_path=None) -> Flask:
             "team_logo": sport_registry.team_logo,
             "player_headshot": sport_registry.player_headshot,
             "csrf_token": token,
+            "bet_text": bet_text,
+            # The crawl along the top of every page: what is in play right now.
+            "crawl": _free_slice(open_now)[:24],
+            "open_count": len(open_now),
         }
+
+    from .accounts import install as install_accounts
+    install_accounts(app)
+
+    # Display filters. Visible numbers use a true minus sign, and dates read
+    # as words, so no page has to print a bare hyphen.
+    app.jinja_env.filters["odds"] = odds_text
+    app.jinja_env.filters["signed"] = signed_text
+    app.jinja_env.filters["minus"] = minus_text
+    app.jinja_env.filters["nice_date"] = nice_date
+    app.jinja_env.filters["kickoff"] = kickoff_text
+    app.jinja_env.filters["dashless"] = dashless
 
     @app.get("/")
     def home():
@@ -83,30 +136,14 @@ def create_app(db_path=None) -> Flask:
         performance = _performance(path)
         return render_template("home.html", active="home", summary=summary,
                                model_picks=model_picks, open_picks=open_picks,
-                               recent=recent, performance=performance)
+                               recent=recent, performance=performance,
+                               any_live=_kick_live(path))
 
     @app.get("/games")
     def games():
-        path = app.config["DB_PATH"]
-        day = _date_arg(request.args.get("date"))
-        sport = _sport_arg(request.args.get("sport"))
-        days = max(1, min(21, request.args.get("days", 7, type=int)))
-        # Finished and in-progress games are dropped. Their prices are live and
-        # there is nothing left to bet, so the page only looks forward.
-        # The team strip needs a 14-day window. Build that board once and use
-        # the requested date slice for the game list instead of retraining Elo
-        # twice during one request.
-        span = max(days, 14)
-        all_cards = board.upcoming_board(sport, days=span, start=day, db_path=path)
-        cutoff = day + dt.timedelta(days=days)
-        cards = [card for card in all_cards
-                 if not card.game_date or dt.date.fromisoformat(card.game_date) < cutoff]
-        teams = board.next_game_by_team(sport, days=span, start=day,
-                                        db_path=path, cards=all_cards)
-        tracked = _tracked_picks(path, None, sport=sport, open_only=True)
-        return render_template("games.html", active="games", day=day, days=days,
-                               sport=sport_registry.get(sport), cards=cards,
-                               teams=teams, tracked=tracked)
+        # The line board was folded into Today's games and the game pages.
+        # Old links and bookmarks still land somewhere useful.
+        return redirect(url_for("tickets", sport=_sport_arg(request.args.get("sport"))))
 
     @app.get("/tickets")
     def tickets():
@@ -121,8 +158,11 @@ def create_app(db_path=None) -> Flask:
         sport = _sport_arg(request.args.get("sport"))
         days = max(1, min(7, request.args.get("days", 1, type=int)))
         cutoff = day + dt.timedelta(days=days)
+        # Every game on the day, started ones included: a game that has tipped
+        # off is still tonight's game, it is just no longer bettable.
         cards = [card for card in
-                 board.upcoming_board(sport, days=days, start=day, db_path=path)
+                 board.upcoming_board(sport, days=days, start=day, db_path=path,
+                                      include_started=True)
                  if not card.game_date
                  or dt.date.fromisoformat(card.game_date) < cutoff]
         return render_template("tickets.html", active="tickets", day=day,
@@ -314,20 +354,30 @@ def create_app(db_path=None) -> Flask:
         day = _date_arg(request.args.get("date"))
         sport = _sport_arg(request.args.get("sport"))
         days = max(1, min(14, request.args.get("days", 7, type=int)))
+        # The headline record is every league at once, which is the number
+        # worth watching. Only the ledger below is filtered, so the two are
+        # labelled rather than left to look like they disagree.
         summary = _model_summary(path)
-        # The model's straight read of the upcoming slate, strongest edge
-        # first. No parlays here - this is what the model likes on its own.
-        cards = board.upcoming_board(sport, days=days, start=day, db_path=path)
-        predictions = sorted(
-            ((card, candidate) for card in cards for candidate in card.candidates),
-            key=lambda pair: pair[1].edge, reverse=True)
-        # Everything the model has committed by itself, newest first, so the
-        # whole record is visible in one place rather than a day at a time.
-        auto_picks = _tracked_picks(path, limit=100)
-        return render_template("model_picks.html", active="model", day=day, days=days,
-                               sport=sport_registry.get(sport),
-                               predictions=predictions[:60], summary=summary,
-                               auto_picks=auto_picks, auto_rules=_autopick_rules())
+        auto_picks = _tracked_picks(path, limit=200, sport=sport)
+        # What is still running: committed, not yet settled. These are the
+        # picks with something left to happen, so they lead the page.
+        open_picks = [pick for pick in _tracked_picks(path, limit=200)
+                      if not pick["result"]]
+        # A free plan sees every graded result but only a few open picks.
+        shown = _free_slice(open_picks)
+        locked_picks = len(open_picks) - len(shown)
+        open_picks = shown
+        visible = {pick["id"] for pick in shown}
+        auto_picks = [pick for pick in auto_picks
+                      if pick["result"] or pick["id"] in visible
+                      or gating.free_pick_allowance() is None]
+        return render_template("model_picks.html", active="model", day=day,
+                               days=days, sport=sport_registry.get(sport),
+                               summary=summary, open_picks=open_picks,
+                               locked_picks=locked_picks,
+                               auto_picks=auto_picks, auto_rules=_autopick_rules(),
+                               performance=_performance(path),
+                               any_live=_kick_live(path))
 
     @app.post("/model-picks/track")
     def track_model_parlay():
@@ -381,7 +431,8 @@ def create_app(db_path=None) -> Flask:
         return render_template("performance.html", active="performance",
                                summary=record_summary(path),
                                performance=_performance(path),
-                               picks=_tracked_picks(path, limit=100))
+                               picks=_tracked_picks(path, limit=100),
+                               any_live=_kick_live(path))
 
     @app.post("/grade")
     def grade():
@@ -417,8 +468,12 @@ def create_app(db_path=None) -> Flask:
                     raise ValueError("Use 0-20 backing games and 1-20 picks per day.")
                 if auto_rate is not None and not 0 <= auto_rate <= 1:
                     raise ValueError("Historical hit rate must be from 0 to 1.")
+                per_unit = float(request.form.get("dollars_per_unit") or 0)
+                if not 0 <= per_unit <= 100000:
+                    raise ValueError("Use a unit size from 0 to 100000.")
                 config["edge"]["target"] = target
                 config["edge"]["max_edge_display"] = max_edge
+                config.setdefault("units", {})["dollars_per_unit"] = per_unit
                 config["auto_pick"] = {
                     **config.get("auto_pick", {}),
                     "enabled": auto_enabled,
@@ -472,9 +527,11 @@ def _tracked_picks(path, day: str | None = None, sport: str | None = None,
                     l.market,l.team,l.line,l.odds_american,l.model_prob,l.implied_prob,
                     l.athlete_id,l.player,l.reason,
                     g.game_date,g.start_utc,g.status AS game_status,
-                    at.abbrev AS away,ht.abbrev AS home,
+                    g.status_detail,g.away_score,g.home_score,
+                    at.abbrev AS away,ht.abbrev AS home,sp.code AS sport_code,
                     r.result,r.units_won,r.graded_utc
              FROM picks p JOIN pick_legs l ON l.pick_id=p.id AND l.ord=0
+             JOIN sports sp ON sp.id=p.sport_id
              JOIN games g ON g.id=l.game_id
              JOIN teams at ON at.id=g.away_team JOIN teams ht ON ht.id=g.home_team
              LEFT JOIN results r ON r.pick_id=p.id WHERE 1=1"""
@@ -492,6 +549,273 @@ def _tracked_picks(path, day: str | None = None, sport: str | None = None,
     sql += " ORDER BY COALESCE(r.graded_utc,p.created_utc) DESC LIMIT ?"
     params.append(limit)
     return [dict(row) for row in db.query(path, sql, tuple(params))]
+
+
+def unit_size(config: dict | None = None) -> float:
+    """What one unit is worth in dollars. 0 turns the money display off."""
+    cfg = config if config is not None else db.get_config()
+    try:
+        return max(0.0, float((cfg.get("units") or {}).get("dollars_per_unit", 0)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def starting_units(config: dict | None = None) -> float:
+    """The bankroll the record is measured from, in units."""
+    cfg = config if config is not None else db.get_config()
+    try:
+        return float((cfg.get("units") or {}).get("starting_units", 100))
+    except (TypeError, ValueError):
+        return 100.0
+
+
+def bankroll(units_won, config: dict | None = None) -> dict | None:
+    """Where the bankroll started and where it stands, or None if unpriced.
+
+    A net figure on its own says nothing about scale: +$156 is a different
+    story on a $1,000 bankroll than on $100,000. This is the same record
+    stated as a starting and a current balance.
+    """
+    cfg = config if config is not None else db.get_config()
+    size = unit_size(cfg)
+    if not size:
+        return None
+    try:
+        won = float(units_won or 0)
+    except (TypeError, ValueError):
+        return None
+    start = starting_units(cfg) * size
+    now = start + won * size
+    return {
+        "start": f"${start:,.2f}",
+        "now": f"${now:,.2f}",
+        "up": now >= start,
+    }
+
+
+def money(units, config: dict | None = None) -> str:
+    """`units` rendered as money, or "" when no unit size is configured.
+
+    Signed the same way the unit figure is, because a record reads as a
+    result rather than a balance: "+3.4u" belongs next to "+$34".
+    """
+    size = unit_size(config)
+    if not size or units is None:
+        return ""
+    try:
+        amount = float(units) * size
+    except (TypeError, ValueError):
+        return ""
+    sign = "-" if amount < 0 else "+"
+    return f"{sign}${abs(amount):,.2f}"
+
+
+def pick_state(pick) -> dict:
+    """Where a pick stands, as {label, tone}.
+
+    "approved" and "graded" are workflow states - they describe what the
+    ledger has done with a pick, not what is happening to the bet. What a
+    reader wants is whether it is still to come, running now, or done:
+
+      Open      committed, the game has not started
+      Live      the game is under way
+      Finished  the game is over, whether or not it has been graded yet
+    """
+    get = pick.get if hasattr(pick, "get") else (
+        lambda k, d=None: pick[k] if k in pick.keys() else d)
+    if get("result"):
+        return {"label": "Finished", "tone": "green"}
+    state = get("game_status")
+    if state == "in_progress":
+        from ..picker.live import is_stale
+        if not is_stale(get("start_utc")):
+            return {"label": "Live", "tone": "live"}
+    if state in ("in_progress", "final"):
+        # Over but unsettled. Almost always a player prop whose box score
+        # ESPN has not published yet - saying "Finished" next to an empty
+        # result just looks broken, so it says what it is waiting for.
+        return {"label": "Settling", "tone": "grey"}
+    return {"label": "Open", "tone": "orange"}
+
+
+def _kick_live(path, sport: str | None = None) -> bool:
+    """Start a live refresh off the request thread and say if a game is on.
+
+    The page never waits on ESPN: it renders what the database holds and the
+    refresh lands in time for the next load, which is why pages showing a live
+    game reload themselves.
+    """
+    from ..picker import live as live_mod
+    try:
+        live_mod.refresh_async(path, sport)
+        return live_mod.any_live(path, sport)
+    except Exception:
+        return False
+
+
+def bet_label(pick) -> str:
+    """How a committed bet reads on any page.
+
+    A player prop stores its market as prop:<espn stat key> and its side in
+    the team column, which spells out as "Over PROP:RUSHINGYARDS" if a page
+    formats it like a game line. Nobody can tell whose bet that is, so a prop
+    is named after the player.
+    """
+    from ..picker import autopick
+
+    market = pick["market"] if hasattr(pick, "keys") else pick.get("market")
+    get = pick.get if hasattr(pick, "get") else (
+        lambda k, d=None: pick[k] if k in pick.keys() else d)
+    side = (get("team") or "").strip()
+    line = get("line")
+
+    if autopick.is_prop_market(market):
+        stat = sport_registry.get(get("sport_code")).stat_labels.get(
+            autopick.stat_key_of(market), autopick.stat_key_of(market))
+        player = get("player") or "Unknown player"
+        number = f"{line:g}" if line is not None else ""
+        if side.lower() == "under":
+            return f"{player} under {number} {stat}".replace("  ", " ")
+        return f"{player} {number}+ {stat}".replace("  ", " ")
+
+    if line is None:
+        return f"{side} {(market or '').upper()}"
+    return f"{side} {(market or '').upper()} {line:+g}"
+
+
+MINUS = "−"
+
+
+def minus_text(value) -> str:
+    """Swap a leading hyphen for a true minus sign."""
+    text = "" if value is None else str(value)
+    return MINUS + text[1:] if text.startswith("-") else text
+
+
+def odds_text(price) -> str:
+    """American odds as they read on a board: +108, −155."""
+    if price is None:
+        return ""
+    try:
+        return minus_text(f"{int(price):+d}")
+    except (TypeError, ValueError):
+        return str(price)
+
+
+def signed_text(value, fmt: str = "%+.1f", suffix: str = "") -> str:
+    """A signed figure with a true minus sign, e.g. signed(0.042*100, '%+.1f', '%')."""
+    if value is None:
+        return ""
+    try:
+        return minus_text(fmt % float(value)) + suffix
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def nice_date(value) -> str:
+    """'2026-11-01' or a UTC timestamp -> 'Sun, Nov 1'. Anything else passes through."""
+    if not value:
+        return ""
+    if isinstance(value, (dt.date, dt.datetime)):
+        day = value
+    else:
+        try:
+            day = dt.date.fromisoformat(str(value)[:10])
+        except ValueError:
+            return str(value)
+    return f"{day:%a}, {day:%b} {day.day}"
+
+
+def kickoff_text(start_utc) -> str:
+    """A UTC start time in local time: 'Sun 7:30 pm'."""
+    if not start_utc:
+        return ""
+    try:
+        moment = dt.datetime.fromisoformat(str(start_utc).replace("Z", "+00:00"))
+    except ValueError:
+        return str(start_utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.timezone.utc)
+    local = moment.astimezone()
+    hour = local.hour % 12 or 12
+    return f"{local:%a} {hour}:{local:%M} {'am' if local.hour < 12 else 'pm'}"
+
+
+_SCORE = re.compile(r"^(\S+) (\d+) - (\d+) (\S+)$")
+
+
+def dashless(text) -> str:
+    """Live strings come from ESPN as 'VAN 0 - 0 SJ' and '19:11 - 1st Period'.
+    Read them as 'VAN 0, SJ 0' and '19:11, 1st Period'."""
+    if not text:
+        return ""
+    text = str(text).strip()
+    match = _SCORE.match(text)
+    if match:
+        away, away_score, home_score, home = match.groups()
+        return f"{away} {away_score}, {home} {home_score}"
+    return text.replace(" - ", ", ").replace(" – ", ", ").replace(" — ", ", ")
+
+
+def bet_text(pick) -> str:
+    """How a bet reads out loud: 'DET to win', 'PHI +5.5', 'Over 54.5'.
+
+    bet_label keeps the stored market visible for the ledger and tests; this
+    is the plain version for the page.
+    """
+    from ..picker import autopick
+
+    if hasattr(pick, "get"):
+        get = pick.get
+    elif hasattr(pick, "keys"):
+        get = lambda k, d=None: pick[k]  # noqa: E731 - sqlite rows
+    else:
+        # Board candidates are objects; their side is `side`, not `team`.
+        get = lambda k, d=None: getattr(pick, "side" if k == "team" else k, d)  # noqa: E731
+    market = (get("market") or "").lower()
+    if autopick.is_prop_market(market):
+        return minus_text(bet_label(pick))
+    side = (get("team") or "").strip()
+    line = get("line")
+    if market in ("h2h", "ml", "moneyline"):
+        return f"{side} to win"
+    if market in ("spread", "spreads") and line is not None:
+        return f"{side} {minus_text(f'{line:+g}')}"
+    if market in ("total", "totals") and line is not None:
+        return f"{side.capitalize()} {line:g}"
+    return minus_text(bet_label(pick))
+
+
+def _free_slice(picks: list[dict]) -> list[dict]:
+    """What a free plan may see of the open picks: a few per league per day."""
+    allowance = gating.free_pick_allowance()
+    if allowance is None:
+        return picks
+    seen: dict[tuple, int] = {}
+    out = []
+    for pick in picks:
+        key = (pick.get("sport_code"), pick.get("game_date"))
+        if seen.get(key, 0) < allowance:
+            seen[key] = seen.get(key, 0) + 1
+            out.append(pick)
+    return out
+
+
+def _crawl_picks(path, limit: int = 200) -> list[dict]:
+    """Every unsettled pick whose game has not finished, soonest first.
+
+    Rendered on every page, so it must never take a page down.
+    """
+    try:
+        rows = _tracked_picks(path, limit=400)
+    except Exception:
+        return []
+    live = [row for row in rows
+            if not row.get("result") and row.get("game_status") != "final"
+            and row.get("status") in ("approved", "edited", "scheduled")]
+    live.sort(key=lambda row: (row.get("game_status") != "in_progress",
+                               row.get("start_utc") or ""))
+    return live[:limit]
 
 
 def _autopick_rules() -> dict:
@@ -544,22 +868,61 @@ def _performance(path) -> dict:
         SELECT r.graded_utc,r.units_won,r.result,p.id
         FROM results r JOIN picks p ON p.id=r.pick_id
         ORDER BY r.graded_utc,p.id""")]
-    values = [100.0]
+    base = starting_units()
+    # Plotted as units won or lost, so the starting bankroll sits on the 0 line.
+    profit = [0.0]
     labels = ["Start"]
     for row in rows:
-        values.append(values[-1] + float(row["units_won"]))
+        profit.append(profit[-1] + float(row["units_won"]))
         labels.append(f"#{row['id']} {row['result']}")
+    values = [base + p for p in profit]
     width, height, pad = 900, 260, 18
-    low, high = min(values), max(values)
+    low, high = min(profit), max(profit)
     spread = max(high - low, 2.0)
-    points = []
-    for index, value in enumerate(values):
-        x = pad + (width - 2 * pad) * index / max(len(values) - 1, 1)
-        y = pad + (height - 2 * pad) * (high - value + spread * 0.08) / (spread * 1.16)
-        points.append(f"{x:.1f},{y:.1f}")
+    if high == low:
+        low, high = low - 1, high + 1
+
+    def y_for(v: float) -> float:
+        return pad + (height - 2 * pad) * (high - v + spread * 0.08) / (spread * 1.16)
+
+    def x_for(index: int) -> float:
+        return pad + (width - 2 * pad) * index / max(len(profit) - 1, 1)
+
+    coords = [(x_for(i), y_for(v)) for i, v in enumerate(profit)]
+    zero_y = y_for(0.0)
+
+    # The line is grey up to the last time it crossed 0, then green or red
+    # for the run it is on now, by which side of 0 it currently sits.
+    positive = profit[-1] >= 0
+    start = len(profit) - 1
+    while start > 0 and (profit[start - 1] >= 0) == positive:
+        start -= 1
+    if start == 0:
+        past, current = [], coords
+    else:
+        # Interpolate the exact crossing between the last two sides of 0.
+        a, b = profit[start - 1], profit[start]
+        t = (0 - a) / (b - a) if b != a else 0.0
+        (x0, _), (x1, _) = coords[start - 1], coords[start]
+        cross = (x0 + (x1 - x0) * t, zero_y)
+        past, current = coords[:start] + [cross], [cross] + coords[start:]
+
+    def fmt(pts):
+        return " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+
+    ticks = []
+    # A tick sitting right on the 0 line would print over its label.
+    near_zero = (high - low) * 0.12
+    levels = {v for v in (low + (high - low) * i / 3 for i in range(4))
+              if abs(v) > near_zero}
+    for v in sorted(levels | {0.0}):
+        ticks.append({"value": v, "y": round(y_for(v), 1), "label": f"{v:+.2f}" if v else "0"})
     return {"rows": rows, "values": values, "labels": labels,
-            "points": " ".join(points), "latest": values[-1],
-            "positive": values[-1] >= 100, "width": width, "height": height}
+            "points": fmt(coords), "past_points": fmt(past) if len(past) > 1 else "",
+            "current_points": fmt(current), "zero_y": round(zero_y, 1),
+            "latest": values[-1], "units": profit[-1],
+            "positive": positive, "base": base,
+            "width": width, "height": height, "ticks": ticks}
 
 
 if __name__ == "__main__":

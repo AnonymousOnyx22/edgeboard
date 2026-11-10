@@ -21,11 +21,14 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from ..db import database as db
 
 ET = ZoneInfo("America/New_York")
 CORE_BASE = "https://sports.core.api.espn.com/v2/sports"
+SITE_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "espn_cache"
 CACHE_TTL_SECONDS = 15 * 60
 
@@ -34,6 +37,7 @@ SPORT_LEAGUES = {
     "mlb": ("baseball", "mlb"),
     "nhl": ("hockey", "nhl"),
     "nba": ("basketball", "nba"),
+    "wnba": ("basketball", "wnba"),
 }
 
 # NFL kickoff windows by US/Eastern start time (config-safe defaults). These
@@ -51,6 +55,14 @@ class EspnClient:
         self.cache_ttl = cache_ttl
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "Mozilla/5.0 (research script; no key)"
+        # ESPN answers the odd burst with a 503 that clears in seconds; retry
+        # with backoff rather than lose the hour. The pool matches the threads
+        # the board and live refresh read with.
+        retry = Retry(total=3, backoff_factor=1.5,
+                      status_forcelist=(429, 500, 502, 503, 504),
+                      allowed_methods=("GET",))
+        adapter = HTTPAdapter(max_retries=retry, pool_maxsize=32)
+        self.session.mount("https://", adapter)
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     # --------------------------------------------------------------- cache
@@ -68,7 +80,11 @@ class EspnClient:
     def _get_json(self, url: str, cache_name: str | None = None) -> dict:
         if cache_name and (cached := self._cache_get(cache_name)) is not None:
             return cached
-        resp = self.session.get(url, params={"lang": "en", "region": "us"}, timeout=30)
+        # No lang/region params: they are ESPN's defaults anyway, and since
+        # 2026-11-09 the basketball feed answers 503 to any request carrying them.
+        # ESPN's $refs come back as http://, which the basketball feed 503s on.
+        url = url.replace("http://", "https://", 1)
+        resp = self.session.get(url, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         # Keep raw samples for inspection - never guess API field names.
@@ -94,6 +110,20 @@ class EspnClient:
             ev = self._get_json(ref, cache_name=f"event_{sport}_{ref.rstrip('/').split('/')[-1]}.json")
             events.append(ev)
         return events
+
+    def site_events(self, sport: str, day: dt.date) -> list[dict]:
+        """A day's events from the site scoreboard, everything inline.
+
+        The core API goes down league by league ("Backend fetch failed")
+        while this keeps answering. Teams, scores and status come in the one
+        response, in shapes the helpers below already read.
+        """
+        sport_slug, league = SPORT_LEAGUES[sport]
+        board = self._get_json(
+            f"{SITE_BASE}/{sport_slug}/{league}/scoreboard?dates={day.strftime('%Y%m%d')}",
+            cache_name=f"{sport}_{day.strftime('%Y%m%d')}_scoreboard.json",
+        )
+        return board.get("events", [])
 
     # --------------------------------------------------------- competitions
     def competition(self, event: dict) -> dict:
@@ -125,7 +155,14 @@ class EspnClient:
         """map competitor order -> final score (0 if game not final)."""
         scores: dict[int, int] = {}
         for c in comp.get("competitors", []):
-            ref = c.get("score", {}).get("$ref")
+            raw = c.get("score")
+            if not isinstance(raw, dict):      # site scoreboard: inline "102"
+                try:
+                    scores[c.get("order", 0)] = int(float(raw or 0))
+                except (TypeError, ValueError):
+                    scores[c.get("order", 0)] = 0
+                continue
+            ref = raw.get("$ref")
             if not ref:
                 scores[c["order"]] = 0
                 continue
@@ -139,6 +176,14 @@ class EspnClient:
         for c in sorted(comp.get("competitors", []), key=lambda x: x.get("order", 0)):
             ref = c.get("team", {}).get("$ref")
             if not ref:
+                team = c.get("team") or {}
+                if team.get("id"):             # site scoreboard: team inline
+                    out.append({
+                        "home_away": c.get("homeAway"),
+                        "espn_id": str(team["id"]),
+                        "name": team.get("displayName", team.get("name", "")),
+                        "abbrev": team.get("abbreviation", ""),
+                    })
                 continue
             clean_ref = ref.split("?")[0]
             team_id = str(c.get("team", {}).get("id") or clean_ref.rstrip("/").split("/")[-1])
@@ -207,7 +252,15 @@ class EspnClient:
     # ------------------------------------------------------------- persist
     def upsert_games(self, sport: str, day: dt.date, db_path=db.DEFAULT_DB) -> int:
         """Fetch day's events, upsert teams + games. Returns # games."""
-        events = self.events(sport, day)
+        try:
+            return self._store_events(sport, self.events(sport, day), db_path)
+        except requests.RequestException:
+            # Any core read failing (listing, score, team) moves the whole day
+            # to the site scoreboard. Rows are keyed on ESPN's id, so games the
+            # core pass already wrote are simply written again.
+            return self._store_events(sport, self.site_events(sport, day), db_path)
+
+    def _store_events(self, sport: str, events: list[dict], db_path) -> int:
         sport_row = db.query(db_path, "SELECT id FROM sports WHERE code=?", (sport,))[0]
         sport_id = sport_row["id"]
         n = 0

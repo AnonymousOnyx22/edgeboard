@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS games (
     away_score  INTEGER,
     home_score  INTEGER,
     venue       TEXT,                          -- stadium/park name
-    venue_city  TEXT                           -- "St. Petersburg, Florida"
+    venue_city  TEXT,                          -- "St. Petersburg, Florida"
+    status_detail TEXT,                        -- "13:39 - 4th Quarter"
+    live_utc    TEXT                           -- when the live state was read
 );
 CREATE INDEX IF NOT EXISTS idx_games_start ON games(start_utc);
 CREATE INDEX IF NOT EXISTS idx_games_sport  ON games(sport_id, status);
@@ -84,6 +86,7 @@ CREATE TABLE IF NOT EXISTS pick_legs (
     edge        REAL,
     athlete_id  TEXT,                          -- ESPN athlete id, props only
     player      TEXT,                          -- display name, props only
+    bookmaker   TEXT,                          -- the book this price came from
     support_stat TEXT,
     reason      TEXT,
     UNIQUE(pick_id, ord)
@@ -161,7 +164,8 @@ INSERT OR IGNORE INTO sports (code, name, enabled) VALUES
     ('nfl', 'NFL', 1),
     ('mlb', 'MLB', 0),
     ('nhl', 'NHL', 0),
-    ('nba', 'NBA', 0);
+    ('nba', 'NBA', 0),
+    ('wnba', 'WNBA', 0);
 
 -- Completed games with their closing lines, kept locally so the picker can ask
 -- "has this exact bet actually cashed before?" without refetching a season of

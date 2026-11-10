@@ -1,0 +1,317 @@
+/* ==========================================================================
+   Hit rates
+   A dense grid built for scanning: sticky header and player column, 44px
+   rows, tabular figures, and hit rate cells tinted by how often the line has
+   come in. The grid scrolls inside its own frame so the header always stays
+   in view. Filtering and sorting happen in the browser and are instant.
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ tools */
+.hr-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin: 0 0 12px;
+}
+.hr-tools[hidden] { display: none; }
+
+.hr-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--seam);
+  border-radius: 9px;
+  background: var(--pit);
+  color: var(--chalk);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.hr-search:focus-within { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-bg); }
+.hr-search input:not([type="checkbox"]) {
+  width: 180px;
+  min-height: 0;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.hr-search input:focus { box-shadow: none; }
+
+.hr-toggle {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--seam-soft);
+  border-radius: 9px;
+  background: var(--pit);
+}
+.hr-toggle button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chalk);
+  font-weight: 650;
+  font-stretch: 88%;
+  cursor: pointer;
+  transition: color 140ms ease, background-color 140ms ease, transform 120ms var(--ease-out);
+}
+.hr-toggle button[aria-pressed="true"] { color: var(--ink); background: var(--raised); box-shadow: inset 0 -2px 0 var(--amber); }
+.hr-toggle button:active { transform: scale(0.97); }
+
+.hr-select { display: inline-flex; align-items: center; gap: 8px; color: var(--chalk); font-size: 0.82rem; font-weight: 600; }
+.hr-select select { min-height: 38px; padding: 0 10px; }
+
+.hr-count {
+  margin: 0 0 0 auto;
+  color: var(--chalk);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.hr-chips {
+  flex-basis: 100%;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.hr-chip {
+  flex: none;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--seam-soft);
+  border-radius: 8px;
+  background: var(--rail);
+  color: var(--chalk);
+  font-size: 0.82rem;
+  font-weight: 650;
+  font-stretch: 88%;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease, transform 120ms var(--ease-out);
+}
+.hr-chip[aria-pressed="true"] { color: var(--ink); background: var(--raised); border-color: var(--amber); }
+.hr-chip:active { transform: scale(0.97); }
+
+@media (hover: hover) and (pointer: fine) {
+  .hr-toggle button:hover, .hr-chip:hover { color: var(--ink); }
+  .hr-chip:hover { border-color: var(--seam); }
+  .hr-chip[aria-pressed="true"]:hover { border-color: var(--amber-hot); }
+}
+
+.hr-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--chalk);
+  font-size: 0.84rem;
+}
+.hr-note i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------- grid */
+.hr-wrap {
+  position: relative;
+  max-height: calc(100vh - var(--topbar) - 40px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+  scrollbar-width: thin;
+  scrollbar-color: var(--seam) transparent;
+}
+
+.hr-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.88rem;
+}
+
+.hr-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 40px;
+  padding: 0;
+  background: var(--pit);
+  border-bottom: 1px solid var(--seam);
+  text-align: left;
+  white-space: nowrap;
+}
+.hr-table thead th button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--chalk);
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-align: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 140ms ease;
+}
+.hr-table thead th.num button { justify-content: flex-end; }
+.hr-table thead th button::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0;
+  transition: opacity 140ms ease, transform 200ms var(--ease-in-out);
+}
+.hr-table thead th[aria-sort] button { color: var(--amber); }
+.hr-table thead th[aria-sort] button::after { opacity: 1; }
+.hr-table thead th[aria-sort="ascending"] button::after { transform: rotate(180deg); }
+@media (hover: hover) and (pointer: fine) {
+  .hr-table thead th button:hover { color: var(--ink); }
+}
+
+.hr-table tbody th,
+.hr-table tbody td {
+  height: 46px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--seam-soft);
+  background: var(--rail);
+  white-space: nowrap;
+  vertical-align: middle;
+  font-weight: 500;
+  text-align: left;
+}
+.hr-table .num { text-align: right; }
+.hr-table tbody tr:last-child > * { border-bottom: 0; }
+.hr-table tbody tr { cursor: pointer; }
+
+/* The player column holds still while the figures scroll under it. */
+.hr-player-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 230px;
+  box-shadow: 1px 0 0 var(--seam-soft);
+}
+.hr-table thead .hr-player-col { z-index: 3; }
+
+@media (hover: hover) and (pointer: fine) {
+  .hr-table tbody tr:hover > * { background: #173050; }
+  .hr-table tbody tr:hover .hr-player-col { box-shadow: inset 3px 0 0 var(--amber), 1px 0 0 var(--seam-soft); }
+}
+
+.hr-who { display: grid; min-width: 0; line-height: 1.2; }
+.hr-who b { font-weight: 650; }
+.hr-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--chalk);
+  font-size: 0.76rem;
+}
+.hr-meta .crest.sm { width: 14px; height: 14px; }
+.hr-injury { color: var(--amber-hot); font-style: normal; font-weight: 650; }
+
+.hr-bet { color: var(--ink); }
+.hr-side {
+  display: inline-block;
+  min-width: 46px;
+  margin-right: 4px;
+  font-weight: 700;
+  font-stretch: 85%;
+}
+.hr-side.is-over { color: var(--ink); }
+.hr-side.is-under { color: var(--chalk); }
+
+.hr-line b { font-size: 0.98rem; font-weight: 750; margin-right: 6px; }
+.hr-line .price { margin-right: 6px; }
+.hr-book { color: var(--faint); font-size: 0.74rem; }
+.hr-model-tag {
+  padding: 2px 6px;
+  border: 1px dashed var(--seam);
+  border-radius: 5px;
+  color: var(--chalk);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* Hit rate cells: green when the line comes in often, amber when it is a
+   coin flip, red when it rarely does. Two games or fewer are not graded. */
+.hr-rate { min-width: 78px; }
+.hr-rate b { font-weight: 750; font-stretch: 84%; }
+.hr-rate span { margin-left: 6px; color: var(--faint); font-size: 0.76rem; }
+.hr-table tbody td.is-strong { background: linear-gradient(var(--win-bg), var(--win-bg)), var(--rail); }
+.hr-table tbody td.is-strong b { color: var(--win); }
+.hr-table tbody td.is-middling { background: linear-gradient(var(--amber-bg), var(--amber-bg)), var(--rail); }
+.hr-table tbody td.is-middling b { color: var(--amber); }
+.hr-table tbody td.is-weak { background: linear-gradient(var(--loss-bg), var(--loss-bg)), var(--rail); }
+.hr-table tbody td.is-weak b { color: var(--loss); }
+.hr-rate.is-thin b { color: var(--chalk); }
+.hr-dot { color: var(--faint); }
+.hr-rate.is-pending .hr-dot { animation: pulse 1.6s ease-in-out infinite; }
+
+.hr-game span { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.hr-game small { margin-left: 8px; color: var(--chalk); font-size: 0.76rem; }
+
+.hr-filtered-empty { margin: 0; padding: 36px 20px; color: var(--chalk); text-align: center; }
+
+/* Rows returning after a filter settle in rather than pop. */
+.hr-table tbody tr.is-entering { animation: hr-row-in 180ms var(--ease-out); }
+@keyframes hr-row-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+/* -------------------------------------------------------------- building */
+.hr-building {
+  padding: 28px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+}
+.hr-building h3 { margin-bottom: 4px; }
+.hr-building p { margin: 0 0 16px; color: var(--chalk); }
+.hr-progress {
+  height: 4px;
+  border-radius: 99px;
+  background: var(--seam-soft);
+  overflow: hidden;
+}
+.hr-progress b {
+  display: block;
+  height: 100%;
+  background: var(--amber);
+  transform-origin: left center;
+  transition: transform 600ms var(--ease-out);
+}
+
+/* ---------------------------------------------------------------- phones */
+@media (max-width: 760px) {
+  .hr-search { flex: 1 1 100%; }
+  .hr-search input:not([type="checkbox"]) { width: 100%; }
+  .hr-count { margin-left: 0; flex-basis: 100%; }
+  .hr-wrap { max-height: 72vh; }
+  .hr-player-col { min-width: 168px; }
+  .hr-meta { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hr-table tbody tr.is-entering { animation: none; }
+  .hr-note i, .hr-rate.is-pending .hr-dot { animation: none; }
+  .hr-progress b { transition: none; }
+}

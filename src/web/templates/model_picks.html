@@ -1,106 +1,182 @@
 {% extends "base.html" %}
-{% block title %}Edgeboard · Model picks{% endblock %}
+{% import "_media.html" as media with context %}
+{% block title %}Model picks{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='pages/record.css') }}">{% endblock %}
 {% block content %}
-<div class="eyebrow">The model</div>
-<h1>Model picks</h1>
-<p class="lede">What the model likes straight up. No parlays, no combos — its own best lines against the market, then its complete record below.</p>
-
-<div class="seg-row" role="group" aria-label="Sport">
-  {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
-     href="{{ url_for('model_picks', sport=item.code) }}">{{ item.name }}</a>{% endfor %}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1 class="page-title">Model picks</h1>
+    <p class="lede">What the model backs straight up, with no parlays and no combos. Everything it has committed, and how that record is going.</p>
+  </div>
 </div>
 
-<div class="metric-grid">
-  <div class="metric"><small>Model record</small>
-    <strong>{{ summary.wins }}-{{ summary.losses }}{% if summary.decisions %}<span style="font-size:13px;color:var(--muted)"> graded</span>{% endif %}</strong></div>
-  <div class="metric"><small>Hit rate</small><strong>{{ '%.0f%%'|format(summary.hit_rate * 100) }}</strong></div>
-  <div class="metric"><small>Units won</small><strong class="{{ 'positive' if summary.units >= 0 else 'negative' }}">{{ '%+.1f'|format(summary.units) }}</strong></div>
-  <div class="metric"><small>ROI</small><strong class="{{ 'positive' if summary.roi >= 0 else 'negative' }}">{{ '%+.1f%%'|format(summary.roi * 100) }}</strong></div>
-</div>
+{# The same board as the overview: the record on the left, the units line on
+   the right, across every league. #}
+<section class="board" aria-label="Model record, every league">
+  <div class="board-score">
+    <div class="score-row">
+      <div class="score score-won" data-reveal="board">
+        <span class="score-label">Won</span>
+        <strong data-count>{{ summary.wins }}</strong>
+      </div>
+      <div class="score score-lost" data-reveal="board" style="--reveal-index: 1">
+        <span class="score-label">Lost</span>
+        <strong data-count>{{ summary.losses }}</strong>
+      </div>
+    </div>
+    {% if summary.decisions %}
+      <div class="split" data-reveal="wipe" style="--reveal-index: 2"
+           role="img" aria-label="{{ '%.0f'|format(summary.hit_rate * 100) }} percent of decided picks won">
+        <span class="split-won" style="flex-grow: {{ summary.wins }}"></span>
+        <span class="split-lost" style="flex-grow: {{ summary.losses }}"></span>
+      </div>
+    {% endif %}
+    <dl class="board-stats" data-reveal="fade" style="--reveal-index: 3">
+      <div><dt>Hit rate</dt><dd>{% if summary.decisions %}{{ '%.0f%%'|format(summary.hit_rate * 100) }}{% else %}None yet{% endif %}</dd></div>
+      <div><dt>Units</dt><dd class="{{ 'positive' if summary.units >= 0 else 'negative' }}">{{ summary.units|signed('%+.1f', 'u') }}</dd>
+        {% if unit_size %}<span class="metric-sub {{ 'positive' if summary.units >= 0 else 'negative' }}">{{ money(summary.units)|minus }}</span>{% endif %}</div>
+      <div><dt>Return</dt><dd class="{{ 'positive' if summary.roi >= 0 else 'negative' }}">{{ (summary.roi * 100)|signed('%+.1f', '%') }}</dd></div>
+    </dl>
+  </div>
+
+  <a class="board-chart" href="{{ url_for('performance') }}" data-reveal="wipe" style="--reveal-index: 1"
+     aria-label="Units won or lost, now {{ performance.units|signed('%+.2f') }}. Open the full record.">
+    <div class="board-chart-head">
+      <span>Every league, units won or lost</span>
+      <b class="{{ 'positive' if performance.positive else 'negative' }}">{{ performance.units|signed('%+.2f', 'u') }}</b>
+    </div>
+    <svg viewBox="0 0 {{ performance.width }} {{ performance.height }}" aria-hidden="true">
+      {% include '_chart_lines.html' %}
+    </svg>
+    <div class="chart-label">
+      <span>{{ performance.rows|length }} graded {{ 'pick' if performance.rows|length == 1 else 'picks' }}, oldest on the left</span>
+      <span class="chart-more">Full record</span>
+    </div>
+  </a>
+</section>
 
 <section class="section">
   <div class="section-head">
     <div>
-      <div class="eyebrow">{{ sport.name }} · next {{ days }} days</div>
-      <h2>Upcoming predictions</h2>
-      <p>Every priced line the model rates above the edge threshold on the next {{ days }} days, strongest first.</p>
+      <h2>Open picks</h2>
+      <p>Committed and not settled yet. A game in progress shows where it stands.</p>
     </div>
+    {% if open_picks %}<span class="section-count">{{ open_picks|length }} running</span>{% endif %}
   </div>
-  {% if predictions %}
-  <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr>
-        <th>Game</th><th>Pick</th><th>Price</th><th>Model</th><th>Edge</th>
-      </tr></thead>
-      <tbody>
-      {% for card, bet in predictions %}
-        <tr>
-          <td>{{ card.matchup }}<br><span class="pos">{{ card.kickoff_local() }}</span></td>
-          <td><b>{{ bet.headline }}</b></td>
-          <td>{{ '%+d'|format(bet.odds) }}</td>
-          <td>{{ '%.0f%%'|format(bet.model_prob * 100) }}</td>
-          <td class="{{ 'positive' if bet.edge >= 0 else 'negative' }}"><b>{{ '%+.1f%%'|format(bet.edge * 100) }}</b></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+  {% if open_picks %}
+  <div class="slip-grid" data-stagger>
+    {% for pick in open_picks %}
+      {% set st = live_status(pick) %}
+      <article class="slip {{ 'is-live' if st and st.live }}" data-reveal="deal">
+        <header class="slip-top">
+          <span class="slip-league">{{ (pick.sport_code or '')|upper }}</span>
+          {% if st %}
+            <span class="live-badge {{ 'final' if not st.live }}">{{ st.label }}</span>
+          {% else %}
+            {% set ps = pick_state(pick) %}<span class="pill {{ ps.tone }}">{{ ps.label }}</span>
+          {% endif %}
+        </header>
+        <h3 class="slip-bet">{{ bet_text(pick) }}</h3>
+        <p class="slip-game">
+          {{ media.matchup(pick.away, pick.home, pick.sport_code) }}
+          {% if is_prop(pick.market) %}<span class="slip-tag">Player bet</span>{% endif %}
+        </p>
+        {% if st and (st.score or st.detail) %}
+          <p class="slip-when is-live">{{ st.score|dashless }}{% if st.score and st.detail %}, {% endif %}{{ st.detail|dashless }}</p>
+        {% else %}
+          <p class="slip-when">{{ pick.start_utc|kickoff or pick.game_date|nice_date or 'Scheduled' }}</p>
+        {% endif %}
+        <dl class="slip-figures">
+          <div><dt>Price</dt><dd class="price">{{ pick.odds_american|odds }}</dd></div>
+          <div><dt>Model</dt><dd>{{ '%.0f%%'|format((pick.model_prob or 0) * 100) }}</dd></div>
+          <div><dt>Edge</dt><dd>{{ ((pick.edge or 0) * 100)|signed('%+.1f', '%') }}</dd></div>
+        </dl>
+      </article>
+    {% endfor %}
   </div>
-  {% else %}<div class="empty"><h3>Nothing on the {{ sport.name }} fixture list cleared the threshold.</h3><p>Sync games and odds on the games page, then come back.</p></div>{% endif %}
+  {% else %}
+    <div class="empty">
+      <h3>Nothing open right now.</h3>
+      <p>Every committed pick has settled. New ones appear here as the model commits them.</p>
+    </div>
+  {% endif %}
+  {% if locked_picks %}
+    {% import "_paywall.html" as pay with context %}
+    <div style="margin-top:16px">{{ pay.paywall('all_picks', title=locked_picks ~ ' more open ' ~ ('pick' if locked_picks == 1 else 'picks'), detail='The free plan shows two open picks per league each day. Every graded result stays public either way.') }}</div>
+  {% endif %}
 </section>
 
-<section class="section">
+<section class="section" id="ledger">
   {# The full ledger grows without bound, so it folds away. The summary keeps
      the count visible, which is the part worth seeing at a glance. #}
   <details class="section-fold">
     <summary>
       <div>
-        <div class="eyebrow">Ledger</div>
         <h2>Every model pick</h2>
-        <p>Everything the model has committed, newest first. Graded results are updated on the performance page.</p>
+        <p>The {{ sport.name }} ledger, newest first. Switch league below; the record above stays across every league.</p>
       </div>
       {% set player_bets = auto_picks|rejectattr('player', 'none')|list|length %}
       <span class="fold-count">
-        {{ auto_picks|length }} total{% if player_bets %} · {{ player_bets }} player{% endif %}
+        {{ auto_picks|length }} {{ 'pick' if auto_picks|length == 1 else 'picks' }}{% if player_bets %}, {{ player_bets }} on players{% endif %}
       </span>
     </summary>
-  {% if auto_picks %}
-  <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr>
-        <th>Pick</th><th>Game</th><th>Line</th><th>Price</th><th>Prob</th><th>Edge</th><th>Result</th>
-      </tr></thead>
-      <tbody>
-      {% for pick in auto_picks %}
-        <tr>
-          <td>
-            {% if is_prop(pick.market) %}
-              {# A player bet reads as the player and the number, not as the
-                 raw prop:<stat> key the leg is stored under. #}
-              <b>{{ pick.player }} {{ pick.team|lower }} {{ '%g'|format(pick.line) }}
-                 {{ stat_label(prop_stat(pick.market), sport.code) }}</b><br>
-              <span class="pos">#{{ pick.id }} · player bet · {{ pick.status }}</span>
-            {% else %}
-              <b>{{ pick.market }} {{ pick.team }}{% if pick.line %} {{ '%g'|format(pick.line) }}{% endif %}</b><br>
-              <span class="pos">#{{ pick.id }} · {{ pick.status }}</span>
-            {% endif %}
-          </td>
-          <td>{{ pick.away }} @ {{ pick.home }}<br><span class="pos">{{ pick.game_date or pick.start_utc }}</span></td>
-          <td class="mono">{{ pick.line if pick.line is not none else 'ML' }}</td>
-          <td>{{ '%+d'|format(pick.odds_american) }}</td>
-          <td>{{ '%.0f%%'|format((pick.model_prob or 0) * 100) }}</td>
-          <td class="{{ 'positive' if pick.edge >= 0 else 'negative' }}">{{ '%+.1f%%'|format((pick.edge or 0) * 100) }}</td>
-          <td>
-            {% if pick.result %}
-              <span class="result-mark {{ 'result-win' if pick.result == 'W' else ('result-loss' if pick.result == 'L' else 'result-push') }}">{{ '&plus; W'|safe if pick.result == 'W' else ('&minus; L'|safe if pick.result == 'L' else '= P') }}</span>
-              {% if pick.units_won is not none %}<br><span class="{{ 'units-win' if pick.result == 'W' else ('units-loss' if pick.result == 'L' else 'pos') }}">{{ '%+.1f'|format(pick.units_won) }}</span>{% endif %}
-            {% else %}<span class="pos">—</span>{% endif %}
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}<div class="empty"><h3>No model picks committed yet.</h3><p>Run auto-pick from the games page, or raise the edge threshold and sync again.</p></div>{% endif %}
+
+    <div class="seg-row" role="group" aria-label="Filter the ledger by league">
+      {% for item in sports %}<a class="seg {{ 'active' if item.code == sport.code }}"
+         href="{{ url_for('model_picks', sport=item.code) }}#ledger"
+         {% if item.code == sport.code %}aria-current="true"{% endif %}>{{ item.name }}</a>{% endfor %}
+    </div>
+
+    {% if auto_picks %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th>Pick</th><th>Game</th><th class="num">Price</th><th class="num">Model</th><th class="num">Edge</th><th>Result</th>
+        </tr></thead>
+        <tbody>
+        {% for pick in auto_picks %}
+          <tr>
+            <td>
+              <b>{{ bet_text(pick) }}</b>
+              <span class="ledger-meta">
+                <span>#{{ pick.id }}</span>
+                {% if is_prop(pick.market) %}<span>Player bet</span>{% endif %}
+                <span>{{ pick_state(pick).label }}</span>
+              </span>
+            </td>
+            <td>
+              <div class="game-cell">
+                {{ media.matchup(pick.away, pick.home, pick.sport_code) }}
+                {% set st = live_status(pick) %}
+                {% if st %}
+                  <span class="live-line"><span class="live-badge {{ 'final' if not st.live }}">{{ st.label }}</span>{% if st.score %} <span class="live-score">{{ st.score|dashless }}</span>{% endif %}</span>
+                {% else %}
+                  <span class="pos">{{ pick.game_date|nice_date if pick.game_date else pick.start_utc|nice_date }}</span>
+                {% endif %}
+              </div>
+            </td>
+            <td class="num price">{{ pick.odds_american|odds }}</td>
+            <td class="num">{{ '%.0f%%'|format((pick.model_prob or 0) * 100) }}</td>
+            <td class="num">{{ ((pick.edge or 0) * 100)|signed('%+.1f', '%') }}</td>
+            <td>
+              {% if pick.result %}
+                <span class="result-mark {{ 'result-win' if pick.result == 'W' else ('result-loss' if pick.result == 'L' else 'result-push') }}">{{ 'Won' if pick.result == 'W' else ('Lost' if pick.result == 'L' else 'Push') }}</span>
+                {% if pick.units_won is not none %}
+                  <span class="ledger-units {{ 'units-win' if pick.result == 'W' else ('units-loss' if pick.result == 'L' else 'muted') }}">{{ pick.units_won|signed('%+.1f', 'u') }}{% if unit_size %} <span class="units-money">{{ money(pick.units_won)|minus }}</span>{% endif %}</span>
+                {% endif %}
+              {% else %}<span class="muted">Not settled</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="empty">
+        <h3>No {{ sport.name }} picks committed yet.</h3>
+        <p>The model adds picks every hour while the dashboard runs. Pick another league above to see its ledger.</p>
+      </div>
+    {% endif %}
   </details>
 </section>
 {% endblock %}

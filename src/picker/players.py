@@ -22,6 +22,7 @@ from __future__ import annotations
 import datetime as dt
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from ..data import sports as sport_registry
@@ -40,6 +41,9 @@ PLAYER_SEASONS = 3
 # How many upcoming games the board will pull player data for by default. Every
 # game is ~24 rosters of gamelogs on a cold cache, so this is the dial.
 DEFAULT_MAX_GAMES = 6
+# Games read at once. Each one fans out again across its own two rosters, so
+# this multiplies rather than adds - kept modest to stay a polite ESPN client.
+GAME_WORKERS = 4
 
 
 @dataclass
@@ -108,7 +112,8 @@ class PlayerBoard:
     players: list[PlayerView] = field(default_factory=list)
     games_scanned: int = 0
     games_total: int = 0
-    priced: bool = False
+    priced: bool = False        # at least one game carries real book prices
+    priced_games: int = 0       # how many of games_scanned actually do
     note: str = ""
     built_utc: str = ""
 
@@ -264,27 +269,45 @@ def build_player_board(sport: str = "nfl", days: int = 2,
         step(1.0, "Nothing to build.")
         return board
 
+    # Each game is two rosters of game logs, and the games are independent of
+    # one another. Read serially the board waited on one matchup before
+    # starting the next, so the wait was the sum of every game rather than the
+    # slowest one. ESPN is the bottleneck here, not this process.
     views: list[PlayerView] = []
     priced_any = False
-    for index, card in enumerate(cards):
-        base = 0.05 + 0.9 * index / len(cards)
+    done = 0
 
-        def game_step(fraction, message, base=base):
-            step(min(0.98, base + 0.9 * fraction / len(cards)), message)
+    def load_game(card):
+        return card, board_mod.deep_matchup(card, fetch_prices=fetch_prices)
 
-        try:
-            deep = board_mod.deep_matchup(
-                card, fetch_prices=fetch_prices, progress=game_step)
-        except Exception as exc:  # one bad game must not sink the whole board
-            board.note = f"{card.matchup}: {exc}"
-            continue
-        if deep.priced:
-            priced_any = True
-        elif deep.props_note and not board.note:
-            board.note = deep.props_note
-        for sample in deep.players():
-            views.append(_view_for(sample, card, deep.props))
-        board.games_scanned += 1
+    workers = min(GAME_WORKERS, len(cards))
+    with ThreadPoolExecutor(max_workers=workers,
+                            thread_name_prefix=f"{sport}-matchup") as pool:
+        pending = [pool.submit(load_game, card) for card in cards]
+        for future in as_completed(pending):
+            done += 1
+            try:
+                card, deep = future.result()
+            except Exception as exc:  # one bad game must not sink the board
+                if not board.note:
+                    board.note = str(exc)
+                step(0.05 + 0.9 * done / len(cards),
+                     f"Read {done}/{len(cards)} games...")
+                continue
+            if deep.priced:
+                priced_any = True
+                board.priced_games += 1
+            elif deep.props_note and not board.note:
+                # Name the game. "Props are model-only" beside a board that is
+                # mostly priced reads as a contradiction rather than as one
+                # fixture the book has not posted.
+                board.note = f"{card.matchup}: {deep.props_note}"
+
+            for sample in deep.players():
+                views.append(_view_for(sample, card, deep.props))
+            board.games_scanned += 1
+            step(0.05 + 0.9 * done / len(cards),
+                 f"Read {done}/{len(cards)} games, {len(views)} players...")
 
     views.sort(key=lambda p: (p.best.probability if p.best else 0.0), reverse=True)
     board.players = views

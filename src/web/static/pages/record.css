@@ -1,0 +1,330 @@
+/* ==========================================================================
+   Record pages: Overview, Performance, Model picks
+   Built on the tokens in app.css. Each section moves its own way:
+     the board figures drop into place and count, the split bar and charts
+     wipe in, open picks are dealt like slips, the results tape prints left
+     to right, and table rows wipe in from the foundation.
+   ========================================================================== */
+
+/* --------------------------------------------------------------- the board
+   Overview's hero: the record as a scoreboard beside the units line. */
+
+.board {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.78fr) minmax(0, 1.9fr);
+  margin-bottom: 12px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+  overflow: hidden;
+}
+
+.board-score {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px 26px 24px;
+  border-right: 1px solid var(--seam-soft);
+  background: var(--pit);
+}
+
+.score-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.score {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding-top: 12px;
+}
+/* A short bar above each figure says which side of the record it is. */
+.score::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+}
+.score-won::before { background: var(--win); }
+.score-lost::before { background: var(--loss); }
+
+.score-label {
+  color: var(--chalk);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.score strong {
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: clamp(3.6rem, 2.4rem + 4vw, 6.2rem);
+  font-weight: 850;
+  font-stretch: 62%;
+  line-height: 0.86;
+  letter-spacing: -0.01em;
+}
+
+/* The hit rate drawn to scale: wins and losses share one bar. */
+.split {
+  display: flex;
+  gap: 3px;
+  height: 8px;
+}
+.split span { min-width: 3px; border-radius: 3px; }
+.split-won { background: var(--win); }
+.split-lost { background: var(--loss); }
+
+.score-note {
+  margin: 0;
+  color: var(--chalk);
+  font-size: 0.9rem;
+}
+
+.board-chart {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px 20px 16px;
+}
+.board-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.board-chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  color: var(--chalk);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.board-chart-head b {
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-stretch: 70%;
+}
+.board-chart .chart-label a { color: var(--amber); font-weight: 600; }
+
+.metric-link { color: var(--amber); }
+@media (hover: hover) and (pointer: fine) {
+  .metric-link:hover,
+  .board-chart .chart-label a:hover { text-decoration: underline; text-underline-offset: 3px; }
+}
+
+/* ------------------------------------------------------------- table cells */
+
+.game-cell { display: grid; gap: 5px; justify-items: start; }
+.live-line { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.ledger-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 4px;
+  color: var(--faint);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.ledger-units { display: block; margin-top: 5px; font-size: 0.85rem; }
+.ledger-units .units-money { margin-left: 4px; }
+
+/* ------------------------------------------------- model picks header chart
+   The units line, glanced at. Strokes keep their width however the box is
+   stretched, so the line stays crisp at any size. */
+
+.section-count {
+  padding: 6px 12px;
+  border: 1px solid var(--seam);
+  border-radius: 9px;
+  color: var(--amber);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------- slips
+   Open picks as betting slips, dealt onto the table. The dashed seam is the
+   tear line between the bet and its numbers. */
+
+.slip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 12px;
+}
+
+.slip {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--seam-soft);
+  border-radius: 10px;
+  background: var(--rail);
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+.slip.is-live { border-color: rgba(255, 178, 62, 0.45); }
+
+.slip-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.slip-league {
+  padding: 2px 8px;
+  border-radius: var(--r-tight);
+  background: var(--pit);
+  color: var(--chalk);
+  font-size: 0.72rem;
+  font-weight: 750;
+  font-stretch: 80%;
+  letter-spacing: 0.05em;
+}
+
+.slip-bet {
+  margin: 12px 0 6px;
+  font-size: 1.12rem;
+  font-weight: 720;
+  font-stretch: 86%;
+  line-height: 1.2;
+}
+
+.slip-game {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0;
+  color: var(--chalk);
+  font-size: 0.88rem;
+}
+.slip-tag {
+  padding: 1px 7px;
+  border: 1px solid var(--seam);
+  border-radius: 99px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.slip-when {
+  margin: 6px 0 0;
+  color: var(--faint);
+  font-size: 0.82rem;
+}
+.slip-when.is-live { color: var(--amber-hot); font-weight: 600; }
+
+.slip-figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 14px 0 0;
+  padding-top: 11px;
+  border-top: 1px dashed var(--seam);
+}
+.slip-figures div { min-width: 0; }
+.slip-figures dt { color: var(--faint); font-size: 0.74rem; font-weight: 600; }
+.slip-figures dd {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  font-stretch: 82%;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .slip:hover { border-color: var(--seam); background: var(--raised-soft); }
+  .slip.is-live:hover { border-color: var(--amber); }
+}
+
+/* -------------------------------------------------------------------- tape
+   Every graded result in order: up for a win, down for a loss, flat for a
+   push. It prints left to right as it comes into view. */
+
+.tape {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(2px, 12px);
+  justify-content: start;
+  gap: 2px;
+  height: 84px;
+  padding: 14px 16px;
+  border: 1px solid var(--seam-soft);
+  border-radius: var(--r);
+  background: var(--rail);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--seam) transparent;
+}
+.tape::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 50%;
+  height: 1px;
+  background: var(--seam);
+}
+
+.tape-tick {
+  position: relative;
+  height: 50%;
+  border-radius: 2px;
+}
+.tape-tick.w { align-self: start; background: var(--win); }
+.tape-tick.l { align-self: end; background: var(--loss); }
+.tape-tick.p { align-self: center; height: 3px; background: var(--chalk); }
+
+html.js .tape[data-reveal] { transform: none; }
+html.js .tape[data-reveal] .tape-tick {
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 360ms var(--ease-out), transform 420ms var(--ease-out);
+  transition-delay: calc(var(--i, 0) * 9ms);
+}
+html.js .tape[data-reveal].is-visible .tape-tick { opacity: 1; transform: none; }
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 980px) {
+  .board { grid-template-columns: 1fr; }
+  .board-score { border-right: 0; border-bottom: 1px solid var(--seam-soft); }
+}
+
+@media (max-width: 760px) {
+  .head-chart { flex: 1 1 100%; }
+  .board-score { padding: 20px; }
+  .board-chart { padding: 16px; }
+  .slip-grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.js .tape[data-reveal] .tape-tick { transform: none; transition: opacity 300ms ease; }
+}
+
+/* ------------------------------------------------------- board stat strip */
+.board-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 4px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--seam-soft);
+}
+.board-stats dt { color: var(--chalk); font-size: 0.78rem; font-weight: 600; }
+.board-stats dd {
+  margin: 4px 0 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+  font-stretch: 70%;
+  line-height: 1;
+}
+.board-stats .metric-sub { display: block; margin-top: 4px; font-size: 0.8rem; }
+
+a.board-chart { color: inherit; transition: background-color 180ms ease; }
+.board-chart .chart-more { color: var(--amber); font-weight: 600; }
+@media (hover: hover) and (pointer: fine) {
+  a.board-chart:hover { background: var(--raised-soft); }
+  a.board-chart:hover .chart-more { text-decoration: underline; text-underline-offset: 3px; }
+}

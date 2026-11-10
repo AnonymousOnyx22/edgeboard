@@ -249,7 +249,74 @@ NHL = SportConfig(
     season_spans_years=True,
 )
 
-REGISTRY: dict[str, SportConfig] = {s.code: s for s in (NFL, MLB, NHL)}
+# -------------------------------------------------------------- NBA / WNBA
+# Both leagues share ESPN's basketball gamelog layout (verified 2026-10-29):
+#   minutes, points, totalRebounds, assists, steals, blocks, turnovers, fouls,
+#   plus "made-attempted" pairs that espn_stats splits into
+#   fieldGoalsMade/Attempted, threePointFieldGoalsMade/Attempted and
+#   freeThrowsMade/Attempted.
+_BASKETBALL_POSITIONS = ("PG", "SG", "SF", "PF", "C", "G", "F", "GF", "FC")
+_BASKETBALL_STATS = ["points", "totalRebounds", "assists", "threePointFieldGoalsMade",
+                     "pointsRebounds", "pointsAssists", "reboundsAssists",
+                     "pointsReboundsAssists", "steals", "blocks", "turnovers"]
+_BASKETBALL_LABELS = {
+    "points": "Points", "totalRebounds": "Rebounds", "assists": "Assists",
+    "threePointFieldGoalsMade": "Threes Made", "steals": "Steals",
+    "blocks": "Blocks", "turnovers": "Turnovers", "minutes": "Minutes",
+    "fieldGoalsAttempted": "FG Attempts",
+    # Derived in espn_stats.DERIVED_STATS.
+    "pointsRebounds": "Pts + Reb", "pointsAssists": "Pts + Ast",
+    "reboundsAssists": "Reb + Ast", "pointsReboundsAssists": "Pts + Reb + Ast",
+}
+_BASKETBALL_MARKETS = {
+    "points": "player_points", "totalRebounds": "player_rebounds",
+    "assists": "player_assists", "threePointFieldGoalsMade": "player_threes",
+    "steals": "player_steals", "blocks": "player_blocks",
+    "turnovers": "player_turnovers",
+    "pointsRebounds": "player_points_rebounds",
+    "pointsAssists": "player_points_assists",
+    "reboundsAssists": "player_rebounds_assists",
+    "pointsReboundsAssists": "player_points_rebounds_assists",
+}
+_BASKETBALL_CORE = ["player_points", "player_rebounds", "player_assists",
+                    "player_threes"]
+_BASKETBALL_STEP = {k: 1.0 for k in _BASKETBALL_STATS}
+_BASKETBALL_MIN_SD = {
+    "points": 4.5, "totalRebounds": 2.0, "assists": 1.7,
+    "threePointFieldGoalsMade": 1.0, "steals": 0.9, "blocks": 0.8,
+    "turnovers": 1.1, "pointsRebounds": 5.2, "pointsAssists": 5.2,
+    "reboundsAssists": 2.8, "pointsReboundsAssists": 6.0,
+}
+
+NBA = SportConfig(
+    code="nba", name="NBA", espn_sport="basketball", espn_league="nba",
+    odds_key="basketball_nba", emoji="🏀",
+    stat_labels=_BASKETBALL_LABELS,
+    stats_by_position={pos: list(_BASKETBALL_STATS) for pos in _BASKETBALL_POSITIONS},
+    participation_stats={pos: ["minutes", "fieldGoalsAttempted"]
+                         for pos in _BASKETBALL_POSITIONS},
+    prop_markets=_BASKETBALL_MARKETS, core_markets=_BASKETBALL_CORE,
+    line_step=_BASKETBALL_STEP, min_sd=_BASKETBALL_MIN_SD,
+    total_base=228.0, total_sd=18.0,
+    elo_home_advantage=75.0, points_per_100_elo=3.3, margin_sd=12.0,
+    season_spans_years=True,
+)
+
+WNBA = SportConfig(
+    code="wnba", name="WNBA", espn_sport="basketball", espn_league="wnba",
+    odds_key="basketball_wnba", emoji="🏀",
+    stat_labels=_BASKETBALL_LABELS,
+    stats_by_position={pos: list(_BASKETBALL_STATS) for pos in _BASKETBALL_POSITIONS},
+    participation_stats={pos: ["minutes", "fieldGoalsAttempted"]
+                         for pos in _BASKETBALL_POSITIONS},
+    prop_markets=_BASKETBALL_MARKETS, core_markets=_BASKETBALL_CORE,
+    line_step=_BASKETBALL_STEP, min_sd=_BASKETBALL_MIN_SD,
+    total_base=162.0, total_sd=16.0,
+    elo_home_advantage=65.0, points_per_100_elo=3.0, margin_sd=11.5,
+)
+
+REGISTRY: dict[str, SportConfig] = {
+    s.code: s for s in (NFL, MLB, NHL, NBA, WNBA)}
 DEFAULT_SPORT = "nfl"
 
 

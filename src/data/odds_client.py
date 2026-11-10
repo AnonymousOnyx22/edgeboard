@@ -30,6 +30,42 @@ CREDITS_FILE = DATA_DIR / "credits.json"
 DEFAULT_KEY = os.getenv("ODDS_API_KEY", "")
 
 
+# Books whose prices this tool is willing to quote. The Odds API's "us"
+# region also returns offshore books - Bovada, LowVig, BetOnline, MyBookie -
+# which are not available in Ontario. Taking the best price across all of them
+# invents edges against numbers nobody here can actually bet, so the list is
+# an allowlist rather than a preference. Empty means every book.
+#
+# theScore Bet is not offered by The Odds API in any region (checked against
+# us, us2, uk, eu and au), so it cannot be quoted from this data source.
+DEFAULT_BOOKS = ["draftkings", "fanduel", "betmgm", "betrivers"]
+
+
+def allowed_books(config: dict | None = None) -> list[str]:
+    """Lower-cased book keys that may be quoted; empty list means all."""
+    if config is None:
+        from ..db.database import get_config
+        config = get_config()
+    block = (config or {}).get("odds") or {}
+    # `bookmakers: ~` in settings.yaml means "every book the feed returns".
+    books = block.get("bookmakers", DEFAULT_BOOKS)
+    if not books:
+        return []
+    return [str(b).strip().lower() for b in books if str(b).strip()]
+
+
+def preferred_book(config: dict | None = None) -> str:
+    """The book whose line wins when several offer the same player prop, or ''.
+
+    The best price across books can sit on a different line from the one you
+    actually bet at, so a prop is quoted from this book whenever it has one.
+    """
+    if config is None:
+        from ..db.database import get_config
+        config = get_config()
+    return str(((config or {}).get("odds") or {}).get("preferred_book") or "").strip().lower()
+
+
 class OddsAPIError(RuntimeError):
     pass
 
@@ -104,6 +140,7 @@ class OddsClient:
                 "mlb": "baseball_mlb",
                 "nhl": "icehockey_nhl",
                 "nba": "basketball_nba",
+                "wnba": "basketball_wnba",
             }
         out: dict[str, str] = {}
         for short, key in codes.items():

@@ -56,6 +56,8 @@ DEFAULTS = {
     "min_backing_games": 0,
     "max_per_day": 5,
     "status": "approved",
+    # Markets the record says to stop betting, by sport ("all" for every one).
+    "skip_markets": {},
 }
 
 PROP_DEFAULTS = {
@@ -129,6 +131,7 @@ class PropPick:
     athlete_id: str
     player: str
     headline: str
+    bookmaker: str = ""
     note: str = ""
     backing: object | None = None
     warnings: list = field(default_factory=list)
@@ -170,6 +173,7 @@ def to_prop_pick(candidate) -> PropPick | None:
         athlete_id=str(candidate.athlete_id),
         player=candidate.player,
         headline=candidate.headline,
+        bookmaker=candidate.bookmaker,
         note=candidate.evidence(),
         warnings=list(candidate.warnings),
     )
@@ -230,8 +234,15 @@ def select_props(pairs, rules: dict) -> list:
 
 
 # ------------------------------------------------------------------ selection
-def qualifies(candidate, rules: dict) -> tuple[bool, str]:
+def qualifies(candidate, rules: dict, sport: str | None = None) -> tuple[bool, str]:
     """Does this candidate clear the bar? Returns (ok, why not)."""
+    skip = rules.get("skip_markets") or {}
+    if candidate.market in (skip.get("all") or []) + (skip.get(sport) or []):
+        return False, f"{candidate.market} is paused for {sport}"
+    raw = getattr(candidate, "raw_model_prob", None)
+    if raw is not None and raw - candidate.implied_prob >= conf.max_raw_edge():
+        return False, (f"model {raw - candidate.implied_prob:.0%} off the market, "
+                       "too far to trust")
     score = (candidate.confidence or {}).get("score", 0)
     if score < rules["min_confidence"]:
         return False, f"confidence {score} below {rules['min_confidence']}"
@@ -261,7 +272,7 @@ def select(cards, rules: dict) -> list:
         if not card.bettable:
             continue
         for candidate in card.candidates:
-            ok, _ = qualifies(candidate, rules)
+            ok, _ = qualifies(candidate, rules, card.sport)
             if ok:
                 chosen.append((card, candidate))
     chosen.sort(key=lambda pair: (pair[1].confidence.get("score", 0), pair[1].edge),
@@ -323,12 +334,13 @@ def commit(card, candidate, rules: dict, db_path=db.DEFAULT_DB) -> int | None:
         conn.execute("""
             INSERT INTO pick_legs (pick_id, ord, game_id, market, team, line,
                 odds_american, model_prob, implied_prob, edge, reason,
-                athlete_id, player)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                athlete_id, player, bookmaker)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (pick_id, 0, candidate.game_id, candidate.market, candidate.side,
              candidate.line, candidate.odds, candidate.model_prob,
              candidate.implied_prob, candidate.edge, reason,
-             athlete_id, getattr(candidate, "player", None)))
+             athlete_id, getattr(candidate, "player", None),
+             getattr(candidate, "bookmaker", "") or None))
         conn.commit()
         return pick_id
     finally:

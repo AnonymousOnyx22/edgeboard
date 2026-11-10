@@ -36,6 +36,16 @@ NFLVERSE_TO_ESPN = {"LA": "LAR", "WAS": "WSH"}
 DEFAULT_SEASONS = 6
 
 
+class HistoryUnavailableError(RuntimeError):
+    """Raised when no completed-game history could be fetched or built.
+
+    The picker's edge and confidence both come from real prior games. When the
+    store is empty and every source failed, silently modelling on nothing would
+    price every fixture from a default 1500-rating Elo as if it were signal.
+    Callers who need to bet must see and propagate this, not swallow it.
+    """
+
+
 def normalise(abbrev: str) -> str:
     a = (abbrev or "").strip().upper()
     return NFLVERSE_TO_ESPN.get(a, a)
@@ -62,6 +72,11 @@ def backfill(sport: str = "nfl", seasons: int = DEFAULT_SEASONS,
         rows = _nflverse_rows(years)
     else:
         rows = _espn_rows(config.code, years, step)
+
+    if not rows:
+        raise HistoryUnavailableError(
+            f"No {config.name} games fetched for {years[0]}-{years[-1]}: the "
+            "source returned nothing (offline, or the feed is unreachable).")
 
     step(0.9, f"Writing {len(rows)} games...")
     written = _write(rows, db_path)
@@ -229,19 +244,36 @@ def load_history(sport: str = "nfl", db_path=db.DEFAULT_DB,
     Prefers the local store, because that is the deep one the user controls.
     Falls back to a live pull (and seeds the store with it) the first time a
     sport is used, so nothing is ever silently modelled on no history at all.
+
+    Raises :class:`HistoryUnavailableError` when the store is empty and every
+    source produced nothing, so a default-1500 Elo is never treated as signal.
     """
     frame = history_frame(sport, db_path)
     if not frame.empty:
         return frame
     if not auto_backfill:
         return frame
+    error: Exception | None = None
     try:
         backfill(sport, seasons=seasons, db_path=db_path)
-    except Exception:
-        # Offline, or the source is down. Fall back to whatever cache exists.
+    except Exception as exc:
+        error = exc
+    frame = history_frame(sport, db_path)
+    if not frame.empty:
+        return frame
+    try:
+        # Offline, or the primary source is down. Fall back to whatever cache exists.
         from . import espn_schedule
-        return espn_schedule.load_or_build_history(sport)
-    return history_frame(sport, db_path)
+        fallback = espn_schedule.load_or_build_history(sport)
+    except Exception as exc:
+        if error is None:
+            error = exc
+        fallback = None
+    if fallback is not None and not getattr(fallback, "empty", True):
+        return fallback
+    raise HistoryUnavailableError(
+        f"No {sport} history could be built: the local store is empty and the "
+        "source returned no completed games.") from error
 
 
 def seasons_stored(sport: str = "nfl", db_path=db.DEFAULT_DB) -> list[int]:
