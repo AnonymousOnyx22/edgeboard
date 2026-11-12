@@ -87,10 +87,6 @@ class EspnClient:
         resp = self.session.get(url, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        # Keep raw samples for inspection - never guess API field names.
-        (Path(__file__).resolve().parents[2] / "data" / "samples").mkdir(exist_ok=True)
-        (Path(__file__).resolve().parents[2] / "data" / "samples" / f"{cache_name or 'espn_0'}.json").write_text(
-            json.dumps(data, indent=2))
         if cache_name:
             self._cache_set(cache_name, data)
         return data

@@ -823,40 +823,13 @@ def _autopick_rules() -> dict:
     return autopick.settings()
 
 
-def _watched_parlays(path, sport: str) -> list[dict]:
-    """Presentation-ready price histories for the Model Picks watchlist."""
-    from ..picker.edge import american_from_prob
-    watched = actions.tracked_parlays(sport, path)
-    for item in watched:
-        snapshots = item["snapshots"]
-        values = [float(row["decimal_odds"]) for row in snapshots]
-        if not values:
-            item.update(points="", opening_odds=None, current_odds=None, move=0.0)
-            continue
-        opening, current = values[0], values[-1]
-        low, high = min(values), max(values)
-        spread = max(high - low, 0.1)
-        points = []
-        for index, value in enumerate(values):
-            x = 4 + 352 * index / max(len(values) - 1, 1)
-            y = 4 + 64 * (high - value + spread * 0.08) / (spread * 1.16)
-            points.append(f"{x:.1f},{y:.1f}")
-        if len(points) == 1:
-            points.append(f"356.0,{points[0].split(',')[1]}")
-        item["points"] = " ".join(points)
-        item["opening_odds"] = round(american_from_prob(1.0 / opening))
-        item["current_odds"] = round(american_from_prob(1.0 / current))
-        item["move"] = current / opening - 1.0
-    return watched
-
-
 def _model_summary(path) -> dict:
     rows = db.query(path, """SELECT r.result,r.units_won,
         COALESCE(p.units_final,p.units_model,1) AS risk
         FROM results r JOIN picks p ON p.id=r.pick_id WHERE p.source='model'""")
     wins = sum(row["result"] == "W" for row in rows)
     losses = sum(row["result"] == "L" for row in rows)
-    units = sum(float(row["units_won"]) for row in rows)
+    units = sum(float(row["units_won"] or 0) for row in rows)
     risk = sum(float(row["risk"]) for row in rows)
     return {"wins": wins, "losses": losses, "decisions": wins + losses,
             "hit_rate": wins / (wins + losses) if wins + losses else 0,
@@ -873,7 +846,7 @@ def _performance(path) -> dict:
     profit = [0.0]
     labels = ["Start"]
     for row in rows:
-        profit.append(profit[-1] + float(row["units_won"]))
+        profit.append(profit[-1] + float(row["units_won"] or 0))
         labels.append(f"#{row['id']} {row['result']}")
     values = [base + p for p in profit]
     width, height, pad = 900, 260, 18

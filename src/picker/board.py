@@ -331,21 +331,6 @@ def upcoming_board(sport: str = "nfl", days: int = 7, start: dt.date | None = No
     return list(cards)
 
 
-def next_games(sport: str = "nfl", count: int = 5, days: int = 14,
-               db_path=db.DEFAULT_DB, min_edge: float | None = None) -> list[GameCard]:
-    """The next `count` games for a sport, whenever they happen to be.
-
-    Useful between rounds, when a league's next fixtures are a week out and
-    "today" is empty.
-    """
-    return upcoming_board(sport, days=days, db_path=db_path,
-                          min_edge=min_edge, limit=count)
-
-
-# Older name, kept so nothing breaks mid-rename.
-slate_board = day_board
-
-
 def blended_prediction(home: str, away: str, elo: models.EloSystem,
                        series: h2h_mod.TeamH2H | None) -> dict:
     """Elo, pulled toward how these two have actually played each other."""

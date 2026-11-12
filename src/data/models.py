@@ -9,18 +9,8 @@ from __future__ import annotations
 
 import datetime as dt
 import math
-from pathlib import Path
 
-import numpy as np
 import pandas as pd
-
-try:
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.pipeline import make_pipeline
-    HAS_SKLEARN = True
-except ImportError:
-    HAS_SKLEARN = False
 
 from ..db.database import ROOT
 
@@ -32,11 +22,6 @@ K_FACTOR = 20.0
 # NFL defaults, kept as module constants for callers that predate the sport
 # registry. Per-sport values come from data/sports.py.
 ELO_HOME_ADV = 60.0
-POINTS_PER_100_ELO = 2.75     # NFL: ~100 elo ≈ 2.75 points (538-style slope)
-
-
-def default_margin_sd() -> float:
-    return 13.5
 
 
 def _h2h_expected_elo(rating_a: float, rating_b: float) -> float:
@@ -109,50 +94,6 @@ def train_elo(history: pd.DataFrame, until_date: dt.date | None = None,
         margin = row["home_score"] - row["away_score"]
         elo.update(row["home_team"], row["away_team"], margin)
     return elo
-
-
-class LogisticBlend:
-    """Logistic regression on pre-game features, blended with Elo."""
-
-    FEATURES = ["elo_diff", "winpct_diff", "rest_diff"]
-
-    def __init__(self) -> None:
-        self.pipeline = None
-        self._trained = False
-
-    @property
-    def trained(self) -> bool:
-        return self._trained and HAS_SKLEARN
-
-    def build_features(self, history: pd.DataFrame, elo: EloSystem) -> pd.DataFrame:
-        """One row per completed game with features known BEFORE kickoff."""
-        rows = []
-        hist = history.dropna(subset=["home_team", "away_team", "home_score"]).copy()
-        for _, row in hist.iterrows():
-            home, away = row["home_team"], row["away_team"]
-            rows.append({
-                "elo_diff": elo.get(home) + ELO_HOME_ADV - elo.get(away),
-                "winpct_diff": _ytd_winpct(hist, home, row) - _ytd_winpct(hist, away, row),
-                "rest_diff": 0.0,
-                "y": int(row["home_score"] > row["away_score"]),
-            })
-        return pd.DataFrame(rows)
-
-    def fit(self, X: pd.DataFrame) -> None:
-        if not HAS_SKLEARN or X.empty or len(X) < 50:
-            return
-        y = X["y"].to_numpy()
-        feats = X[self.FEATURES].fillna(0.0).to_numpy()
-        self.pipeline = make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=1000))
-        self.pipeline.fit(feats, y)
-        self._trained = True
-
-    def predict_prob(self, home: str, away: str, elo: EloSystem,
-                     winpct_diff: float = 0.0, rest_diff: float = 0.0) -> float | None:
-        if not self.trained:
-            return None
-        x = np.array([[elo.get(home) + ELO_HOME_ADV - elo.get(away), winpct_diff, rest_diff]])
-        return float(self.pipeline.predict_proba(x)[0, 1])
 
 
 def _ytd_winpct(hist: pd.DataFrame, team: str, current_row: pd.Series) -> float:

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from ..data import models, sports as sport_registry
+from ..data import sports as sport_registry
 from ..data.espn_stats import EspnStats
 
 # nflverse and ESPN disagree on exactly two abbreviations.
@@ -30,12 +30,6 @@ NFLVERSE_TO_ESPN = {"LA": "LAR", "WAS": "WSH"}
 # two different answers on one card.
 MEETING_WINDOW = 12
 ESPN_TO_NFLVERSE = {v: k for k, v in NFLVERSE_TO_ESPN.items()}
-
-# NFL stat tables now live in the sport registry; these shims keep the
-# module-level names other code imports.
-STAT_LABELS = sport_registry.NFL.stat_labels
-STATS_BY_POSITION = sport_registry.NFL.stats_by_position
-PARTICIPATION_STATS = sport_registry.NFL.participation_stats
 
 
 def stat_label(stat_key: str, sport: str = "nfl") -> str:
@@ -58,11 +52,6 @@ def did_play(game: dict, position: str, sport: str = "nfl") -> bool:
 def to_espn(abbrev: str) -> str:
     a = (abbrev or "").upper()
     return NFLVERSE_TO_ESPN.get(a, a)
-
-
-def to_nflverse(abbrev: str) -> str:
-    a = (abbrev or "").upper()
-    return ESPN_TO_NFLVERSE.get(a, a)
 
 
 # ------------------------------------------------------------------- teams

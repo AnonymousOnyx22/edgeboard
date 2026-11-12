@@ -40,10 +40,6 @@ class Meeting:
     detail: str               # "BUF 48-42" plus whatever the bet turned on
 
     @property
-    def scoreline(self) -> str:
-        return f"{self.away} {self.away_score:g} @ {self.home} {self.home_score:g}"
-
-    @property
     def total(self) -> float:
         return self.home_score + self.away_score
 

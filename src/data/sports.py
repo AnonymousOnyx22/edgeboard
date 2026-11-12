@@ -20,7 +20,7 @@ meaning "hits recorded" - it means "hits allowed".
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -49,7 +49,6 @@ class SportConfig:
 
     history_source: str = "espn"   # "nflverse" for NFL, "espn" otherwise
     season_spans_years: bool = False   # NHL labels seasons "2025-26"
-    supports_props: bool = True
 
     @property
     def market_to_stat(self) -> dict[str, str]:

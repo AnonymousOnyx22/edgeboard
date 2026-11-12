@@ -61,7 +61,6 @@ class Parlay:
     notes: list[str] = field(default_factory=list)
 
     def american_display(self) -> str:
-        from .edge import american_from_prob
         if self.combined_odds >= 2.0:
             return f"+{round((self.combined_odds - 1) * 100)}"
         return f"{american_from_prob(1.0 / self.combined_odds):.0f}"

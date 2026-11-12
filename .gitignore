@@ -21,11 +21,13 @@ data/player_cache/
 data/props_cache/
 data/schedule_cache/
 data/odds_cache/
-data/samples/
 data/credits.json
-data/ig_cache.json
-data/_preview/
-output/
+
+# Runtime state written by the app
+data/automation_status.json
+data/result_check_status.json
+data/.edgeboard-session-secret
+data/*.lock
 
 # Editor / OS
 .idea/

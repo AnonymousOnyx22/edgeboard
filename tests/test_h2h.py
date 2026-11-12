@@ -1,6 +1,5 @@
 """Head-to-head layer: meetings, records, and participation filtering."""
 import pandas as pd
-import pytest
 
 from src.picker import h2h
 

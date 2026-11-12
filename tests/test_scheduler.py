@@ -203,3 +203,23 @@ def test_a_cached_board_cannot_be_mutated_by_its_caller(tmp_path):
     first.append("not a card")
     second = board_mod.upcoming_board("nfl", days=1, start=day, db_path=path)
     assert "not a card" not in second
+
+
+def test_prune_caches_drops_only_files_past_every_ttl(tmp_path, monkeypatch):
+    import os
+    import time
+    from src.picker import scheduler
+    monkeypatch.setattr(scheduler.db, "ROOT", tmp_path)
+    old = tmp_path / "data" / "player_cache" / "nba" / "gamelog_1_2024.json"
+    fresh = tmp_path / "data" / "schedule_cache" / "nhl" / "day.json"
+    other = tmp_path / "data" / "odds_cache" / "old.json"
+    for path in (old, fresh, other):
+        path.parent.mkdir(parents=True)
+        path.write_text("{}")
+    stale = time.time() - scheduler.PRUNE_AGE - 60
+    os.utime(old, (stale, stale))
+    os.utime(other, (stale, stale))
+
+    assert scheduler.prune_caches() == 1
+    assert not old.exists()
+    assert fresh.exists() and other.exists()

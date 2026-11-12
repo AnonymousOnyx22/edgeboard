@@ -2,7 +2,7 @@
 import pytest
 
 from src.picker.board import scoring_rates, total_model
-from src.picker.parlay_builder import Leg, Parlay, ParlayError, build_parlay, optimize
+from src.picker.parlay_builder import Leg, ParlayError, build_parlay, optimize
 
 
 def _leg(game, prob=0.7, odds=-150, athlete="", stat="", market="h2h"):

@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import threading
+import time
 from pathlib import Path
 
 from ..data import sports as sport_registry
@@ -20,6 +21,25 @@ from .grader import grade_all
 _lock = threading.Lock()
 _started = False
 STATUS_PATH = db.ROOT / "data" / "automation_status.json"
+# Dated cache files are never revisited once stale, so they pile up forever.
+# Nothing in these folders is trusted past 30 days, so older files are dead.
+PRUNE_DIRS = ("player_cache", "schedule_cache")
+PRUNE_AGE = 30 * 24 * 3600
+
+
+def prune_caches(now: float | None = None) -> int:
+    """Delete cache files older than any TTL that reads them. Returns count."""
+    cutoff = (now or time.time()) - PRUNE_AGE
+    removed = 0
+    for name in PRUNE_DIRS:
+        for path in (db.ROOT / "data" / name).rglob("*"):
+            try:
+                if path.is_file() and path.stat().st_mtime < cutoff:
+                    path.unlink()
+                    removed += 1
+            except OSError:
+                pass  # in use or already gone; next cycle gets it
+    return removed
 
 
 def _schedule_dates(sport: str, today: dt.date, days: int,
@@ -91,6 +111,7 @@ def run_cycle(db_path=db.DEFAULT_DB, config: dict | None = None) -> dict:
                 result["sports"][code] = {"error": str(exc)}
                 errors.append(f"{code}: {exc}")
         result["graded"] = len(grade_all(db_path))
+        result["cache_files_pruned"] = prune_caches()
     except Exception as exc:
         errors.append(str(exc))
     finally:

@@ -125,9 +125,6 @@ class OddsClient:
             payload = resp.json()
         except ValueError as exc:
             raise OddsAPIError("sports list returned invalid JSON") from exc
-        # Raw response saved for inspection - never guess field names.
-        (DATA_DIR / "samples").mkdir(exist_ok=True)
-        (DATA_DIR / "samples" / "sports_list_0_raw.json").write_text(json.dumps(payload, indent=2))
         path.write_text(json.dumps([payload, dt.datetime.now().isoformat()]))
         return payload
 
@@ -171,7 +168,7 @@ class OddsClient:
         safe = sport_key.replace("/", "_")
         return ODDS_CACHE / f"{safe}_h2h_spreads_totals.json"
 
-    def fetch_odds(self, sport_key: str, force: bool = False, samples_dir: Path = DATA_DIR / "samples") -> list[dict]:
+    def fetch_odds(self, sport_key: str, force: bool = False) -> list[dict]:
         """Fetch h2h+spreads+totals odds for one sport. Cache-aware, region us only."""
         cache = self._cache_path(sport_key)
         if not force and cache.exists():
@@ -203,8 +200,6 @@ class OddsClient:
             payload = resp.json()
         except ValueError as exc:
             raise OddsAPIError(f"odds for {sport_key} returned invalid JSON") from exc
-        samples_dir.mkdir(exist_ok=True)
-        (samples_dir / f"odds_{sport_key}_0_raw.json").write_text(json.dumps(payload, indent=2))
         cache.write_text(json.dumps([dt.datetime.now().isoformat(), payload]))
         return payload
 
@@ -216,25 +211,3 @@ class OddsClient:
         except Exception:
             return False
 
-    @staticmethod
-    def best_price(outcomes: list[dict], name: str) -> dict | None:
-        """Best available American price across any outcomes matching `name`."""
-        best = None
-        for o in outcomes:
-            if o.get("name") == name or (isinstance(name, str) and o.get("name") and o["name"].lower() == name.lower()):
-                if best is None or o["price"] > best["price"]:
-                    best = o
-        return best
-
-
-def load_odds_into_sport_keys(api_key: str | None = None) -> dict[str, list[dict]]:
-    """Fetch today odds for all *active* supported sports. Returns {short: payload}."""
-    client = OddsClient(api_key)
-    sports = client.active_sports()
-    result: dict[str, list[dict]] = {}
-    for short, key in sports.items():
-        try:
-            result[short] = client.fetch_odds(key)
-        except OddsAPIError:
-            continue
-    return result

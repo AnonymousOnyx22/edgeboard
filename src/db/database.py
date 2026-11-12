@@ -19,11 +19,6 @@ def get_config() -> dict:
         return yaml.safe_load(f)
 
 
-def get_brand() -> dict:
-    with open(ROOT / "config" / "brand.yaml", "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
-
-
 def connect(db_path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     # The hourly cycle, the live score refresh and page loads all write at
@@ -109,10 +104,6 @@ import datetime  # noqa: E402
 
 def utc_now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
-
-
-def today_utc() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).date().isoformat()
 
 
 if __name__ == "__main__":

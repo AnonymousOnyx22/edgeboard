@@ -216,11 +216,6 @@ def history_frame(sport: str = "nfl", db_path=db.DEFAULT_DB) -> pd.DataFrame:
                                  "spread_line", "total_line"])
 
 
-def is_populated(sport: str = "nfl", db_path=db.DEFAULT_DB) -> bool:
-    rows = db.query(db_path, "SELECT COUNT(*) AS n FROM game_history WHERE sport=?", (sport,))
-    return bool(rows and rows[0]["n"])
-
-
 def _int(value):
     try:
         return int(value)
@@ -276,8 +271,3 @@ def load_history(sport: str = "nfl", db_path=db.DEFAULT_DB,
         "source returned no completed games.") from error
 
 
-def seasons_stored(sport: str = "nfl", db_path=db.DEFAULT_DB) -> list[int]:
-    rows = db.query(db_path, """
-        SELECT DISTINCT season FROM game_history
-        WHERE sport=? AND season IS NOT NULL ORDER BY season""", (sport,))
-    return [int(r["season"]) for r in rows]

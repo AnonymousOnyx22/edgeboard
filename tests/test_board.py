@@ -2,8 +2,6 @@
 import datetime as dt
 from types import SimpleNamespace
 
-import pandas as pd
-import pytest
 
 from src.data import props_odds as props_odds_mod
 from src.picker import autopick

@@ -35,27 +35,6 @@ class Picker:
         day = day or dt.date.today()
         return self.espn.upsert_games(self.sport.code, day, db_path=self.db_path)
 
-    def sync_upcoming(self, days: int = 7, start: dt.date | None = None,
-                      progress=None) -> dict:
-        """Sync schedules for a range of days, then prices once.
-
-        The Odds API returns every upcoming event for a sport in a single
-        request, so prices cost the same whether one day or ten is being
-        looked at. Schedules are per-day, so those are fetched in a loop.
-        """
-        start = start or dt.date.today()
-        games = 0
-        for offset in range(max(1, days)):
-            day = start + dt.timedelta(days=offset)
-            if progress:
-                progress(offset / max(1, days), f"Schedule for {day.isoformat()}")
-            games += self.sync_games(day)
-        if progress:
-            progress(0.9, "Fetching prices")
-        odds = self.sync_odds(force=True, day=start)
-        return {"sport": self.sport.code, "days": days, "games": games,
-                "odds_source": odds["source"], "odds_games": odds["games"]}
-
     def sync_odds(self, force: bool = False, day: dt.date | None = None) -> dict:
         """Sync this sport's current prices into the odds table.
         Returns {'source': 'odds_api'|'espn_backup'|'none', 'games': n}."""
@@ -158,8 +137,7 @@ class Picker:
         return n
 
     def _write_market(self, game_id: int, mkey: str, outcomes: list[dict],
-                      bookmaker: str, line_pick: float | None = None,
-                      conn=None) -> None:
+                      bookmaker: str, conn=None) -> None:
         if mkey == "h2h":
             for o in outcomes:
                 side = self._normalize_team_side(game_id, o.get("name", ""))
@@ -345,32 +323,6 @@ class Picker:
             "confidence": cbreak, "units": conf.units_from_confidence(cbreak["score"], cfg),
             "quality_flags": [k for k, v in qual.items() if v is True and k != "games_of_history"],
         }
-
-    def _best_odds(self, game_id: int, market: str, side: str) -> Optional[int]:
-        """Highest price for a side across bookmakers."""
-        rows = db.query(self.db_path, """
-            SELECT MAX(price) AS p FROM odds WHERE game_id=? AND market=? AND LOWER(side)=LOWER(?)""",
-                        (game_id, market, side))
-        return rows[0]["p"] if rows and rows[0]["p"] is not None else None
-
-    def _best_line(self, game_id: int, market: str, side: str) -> Optional[float]:
-        rows = db.query(self.db_path, """
-            SELECT line FROM odds WHERE game_id=? AND market=? AND LOWER(side)=LOWER(?) ORDER BY price DESC LIMIT 1""",
-                        (game_id, market, side))
-        return rows[0]["line"] if rows else None
-
-    def _best_quote(self, game_id: int, market: str, side: str,
-                    line: float | None = None):
-        """Return price and line from the same bookmaker quote."""
-        sql = """SELECT price, line, bookmaker FROM odds
-                 WHERE game_id=? AND market=? AND LOWER(side)=LOWER(?)"""
-        params: list = [game_id, market, side]
-        if line is not None:
-            sql += " AND ABS(line - ?) < 0.0001"
-            params.append(line)
-        sql += " ORDER BY price DESC, captured_utc DESC LIMIT 1"
-        rows = db.query(self.db_path, sql, tuple(params))
-        return rows[0] if rows else None
 
     def _best_pair(self, game_id: int, market: str, side: str, opponent: str):
         """Best side quote with its opposing quote from the same book and line."""

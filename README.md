@@ -215,11 +215,6 @@ the same board, matchup and parlay views in a browser, built against
 [`docs/ENGINE_API.md`](docs/ENGINE_API.md)  the interface contract that keeps
 the UI free of any knowledge of ESPN or The Odds API.
 
-`archive/` holds an earlier incarnation of this project  an Instagram content
-generator with caption templates and card rendering  kept because it's where
-the odds and confidence models originally came from. It isn't wired into the
-app. See `archive/README.md`.
-
 ---
 
 ## A note on what this is

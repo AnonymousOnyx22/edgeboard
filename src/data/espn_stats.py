@@ -28,7 +28,6 @@ from __future__ import annotations
 import datetime as dt
 import json
 import time
-from pathlib import Path
 
 import requests
 
@@ -105,10 +104,6 @@ DERIVED_STATS["nba"] = DERIVED_STATS["wnba"] = {
 
 BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
-
-
-class EspnStatsError(RuntimeError):
-    pass
 
 
 class EspnStats:
@@ -210,13 +205,6 @@ class EspnStats:
                         rows.append(row)
         rows.sort(key=lambda r: (r["date"] or "", r["event_id"]), reverse=True)
         return rows
-
-    def games_vs(self, athlete_id: str | int, opponent_abbrev: str,
-                 seasons: list[int] | None = None) -> list[dict]:
-        """That player's games against one specific opponent, newest first."""
-        target = (opponent_abbrev or "").upper()
-        return [r for r in self.game_rows(athlete_id, seasons)
-                if (r.get("opponent") or "").upper() == target]
 
     # -------------------------------------------------------------- roster
     def roster(self, team_espn_id: str | int, season: int | None = None,

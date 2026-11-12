@@ -11,8 +11,6 @@
     python main.py grade   [--date YYYY-MM-DD]
     python main.py credits
     python main.py backtest [--season YYYY]
-
-Content generation lives in archive/ and is no longer wired up.
 """
 from __future__ import annotations
 

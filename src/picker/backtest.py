@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import datetime as dt
 
-import numpy as np
 import pandas as pd
 
 from ..db import database as db
@@ -89,7 +88,6 @@ def simulate_season(season: int | None = None, target_edge: float = 0.03,
                     min_prob: float = 0.50) -> dict:
     """Replay the picker on one past season. Only uses data known before each
     kickoff: Elo trained on everything up to that point."""
-    from ..data import models as M
     season = season or dt.date.today().year - 1
     df = stats_nfl.schedule_dataframe(seasons=[season])
     if df.empty:

@@ -213,11 +213,6 @@ def refresh_async(db_path=db.DEFAULT_DB, sport: str | None = None) -> bool:
     return True
 
 
-def last_result(db_path=db.DEFAULT_DB, sport: str | None = None) -> dict:
-    """What the most recent background refresh reported."""
-    return _LAST.get(f"{db_path}:{sport or '*'}", {})
-
-
 def is_stale(start_utc, now: dt.datetime | None = None) -> bool:
     """Started so long ago that "in progress" can only be an unclosed record."""
     start = _parse(start_utc)
