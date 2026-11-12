@@ -445,7 +445,14 @@ def total_model(prediction: dict, sport: str = "nfl", card: "GameCard | None" = 
 # ------------------------------------------------------------ line pricing
 def best_pair(game_id: int, market: str, side: str, opponent: str,
               db_path=db.DEFAULT_DB):
-    """Best price for a side, with the opposing price from the same book."""
+    """Best price for a side, with the opposing price from the same book.
+
+    Allowed books always win. Without an Odds API key the only prices on file
+    are ESPN's embedded lines (stored as bookmaker "ESPN"), which the allowlist
+    would otherwise filter out, leaving every game with no candidates and the
+    autopicker with nothing to commit. So when no allowed book priced the game,
+    the ESPN backup line is used; the pick records "ESPN" as its book.
+    """
     line_match = "1=1"
     if market == "spread":
         line_match = "ABS(a.line + b.line) < 0.0001"
@@ -453,23 +460,32 @@ def best_pair(game_id: int, market: str, side: str, opponent: str,
         line_match = "ABS(a.line - b.line) < 0.0001"
     from ..data.odds_client import allowed_books
     books = allowed_books()
-    book_filter, book_params = "", []
-    if books:
-        book_filter = (" AND LOWER(a.bookmaker) IN ("
-                       + ",".join("?" * len(books)) + ")")
-        book_params = books
 
-    rows = db.query(db_path, f"""
-        SELECT a.price AS side_price, a.line AS side_line,
-               b.price AS opp_price, a.bookmaker
-        FROM odds a JOIN odds b
-          ON b.game_id=a.game_id AND b.market=a.market AND b.bookmaker=a.bookmaker
-        WHERE a.game_id=? AND a.market=?
-          AND LOWER(a.side)=LOWER(?) AND LOWER(b.side)=LOWER(?)
-          AND {line_match}{book_filter}
-        ORDER BY a.price DESC, a.captured_utc DESC
-        LIMIT 1""", (game_id, market, side, opponent, *book_params))
-    return rows[0] if rows else None
+    def lookup(names):
+        book_filter = ""
+        if names:
+            book_filter = (" AND LOWER(a.bookmaker) IN ("
+                           + ",".join("?" * len(names)) + ")")
+        rows = db.query(db_path, f"""
+            SELECT a.price AS side_price, a.line AS side_line,
+                   b.price AS opp_price, a.bookmaker
+            FROM odds a JOIN odds b
+              ON b.game_id=a.game_id AND b.market=a.market AND b.bookmaker=a.bookmaker
+            WHERE a.game_id=? AND a.market=?
+              AND LOWER(a.side)=LOWER(?) AND LOWER(b.side)=LOWER(?)
+              AND {line_match}{book_filter}
+            ORDER BY a.price DESC, a.captured_utc DESC
+            LIMIT 1""", (game_id, market, side, opponent, *(names or [])))
+        return rows[0] if rows else None
+
+    pair = lookup(books)
+    if pair is None and books and ESPN_BACKUP_BOOK not in books:
+        pair = lookup([ESPN_BACKUP_BOOK])
+    return pair
+
+
+# Bookmaker name the ESPN embedded-odds backup is stored under (engine.py).
+ESPN_BACKUP_BOOK = "espn"
 
 
 def line_candidates(card: GameCard, prediction: dict, elo: models.EloSystem,
